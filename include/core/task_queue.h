@@ -29,7 +29,8 @@ typedef struct{
 // [함수 선언]
 // 초기화 및 해제
 int task_queue_init(TaskQueue* q, int capacity);
-void task_queue_destroy(TaskQueue* q);
+void task_queue_shutdown(TaskQueue* q);
+void task_queue_free(TaskQueue* q);
 
 // push, pop
 void task_queue_enqueue(TaskQueue* q, Task task);  // 꽉 차면 대기 

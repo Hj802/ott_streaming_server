@@ -92,11 +92,25 @@ Task task_queue_dequeue(TaskQueue *q){
     return task;
 }
 
-// 종료
-void task_queue_destroy(TaskQueue* q){
+// 종료 신호 전송
+void task_queue_shutdown(TaskQueue* q){
     pthread_mutex_lock(&q->mutex);
     q->stop = true;
+
     pthread_cond_broadcast(&q->cond_not_empty);
     pthread_cond_broadcast(&q->cond_not_full);
+
     pthread_mutex_unlock(&q->mutex);
+}
+
+// 자원 해제
+// 모든 워커 스레드가 종료(join)된 후에 호출해야 함!
+void task_queue_free(TaskQueue* q){
+    if (q->tasks) {
+        free(q->tasks);
+        q->tasks = NULL;
+    }
+    pthread_mutex_destroy(&q->mutex);
+    pthread_cond_destroy(&q->cond_not_empty);
+    pthread_cond_destroy(&q->cond_not_full);
 }
