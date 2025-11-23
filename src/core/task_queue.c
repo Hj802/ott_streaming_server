@@ -1,14 +1,4 @@
 #define _POSIX_C_SOURCE 200112L
-/*
-# 역할: 메인 스레드(Reactor)와 워커 스레드 사이의 '우체통'.
-
-# 핵심 기능:
-- 자료구조: 연결 리스트(Linked List)나 원형 버퍼로 구현된 큐.
-- enqueue(task): 메인 스레드가 작업을 넣음. (반드시 Mutex 락 필요!)
-- dequeue(): 워커 스레드가 작업을 꺼냄. (반드시 Mutex 락 필요!)
-- 주의: 여기가 **동시성 문제(Race Condition)**가 발생하는 지점. 
-pthread_mutex_lock과 pthread_cond_signal을 정확히 사용해야 하네.
-*/
 #include "core/task_queue.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -51,24 +41,62 @@ int task_queue_init(TaskQueue* q, int capacity){
     }
 
     return 0;
-}// task_queue_init()
+}
 
+// Producer
+void task_queue_enqueue(TaskQueue* q, Task task){
+    pthread_mutex_lock(&q->mutex);
+
+    // 이미 종료 신호가 왔다면 더 이상 받지 않음
+    if (q->stop) {
+        pthread_mutex_unlock(&q->mutex);
+        return; 
+    }
+
+    while (q->size == q->capacity) {
+        // 빈 공간이 생길 때(not_full)까지 여기서 잠들기.
+        // 잠들 때는 mutex를 잠깐 반납, 깨어나면 다시 잡기.
+        pthread_cond_wait(&q->cond_not_full, &q->mutex);
+    }
+
+    q->tasks[q->tail] = task;
+    q->tail = (q->tail + 1) % q->capacity;
+    q->size++;
+
+    pthread_cond_signal(&q->cond_not_empty);
+    pthread_mutex_unlock(&q->mutex);
+}
+
+// Consumer
+Task task_queue_dequeue(TaskQueue *q){
+    pthread_mutex_lock(&q->mutex);
+    while(q->size == 0 && !q->stop){
+        pthread_cond_wait(&q->cond_not_empty, &q->mutex);
+    }
+
+    if (q->size == 0 && q->stop){ // stop 때문에 깸
+        pthread_mutex_unlock(&q->mutex);
+        
+        // "독약(Poison Pill)" 또는 "빈 Task" 리턴
+        // 워커 스레드는 function이 NULL인 것을 보고 루프를 종료함
+        Task empty_task = { .function = NULL, .arg = NULL }; 
+        return empty_task;
+    }
+
+    Task task = q->tasks[q->head];
+    q->head = (q->head + 1) % q->capacity; 
+    q->size--;
+
+    pthread_cond_signal(&q->cond_not_full);
+    pthread_mutex_unlock(&q->mutex);
+    return task;
+}
+
+// 종료
 void task_queue_destroy(TaskQueue* q){
-
-}
-
-// push, pop
-void task_queue_push(TaskQueue* q, Task task){
-
-}
-Task task_queue_pop(TaskQueue *q){
-
-}
-
-// 상태 확인 (참고용! 로직 제어용 X)
-bool task_queue_is_empty(TaskQueue* q){
-    
-}
-bool task_queue_is_full(TaskQueue* q){
-
+    pthread_mutex_lock(&q->mutex);
+    q->stop = true;
+    pthread_cond_broadcast(&q->cond_not_empty);
+    pthread_cond_broadcast(&q->cond_not_full);
+    pthread_mutex_unlock(&q->mutex);
 }
