@@ -98,13 +98,26 @@ int thread_pool_submit(ThreadPool* pool, void (*function)(void*), void* arg){
 }
 
 void thread_pool_shutdown(ThreadPool* pool){
-
+    if (pool == NULL) return;
+    task_queue_shutdown(&pool->queue);
 }
 
 void thread_pool_wait(ThreadPool* pool){
+    if (pool == NULL || pool->threads == NULL) return;
 
+    for (int i = 0; i < pool->num_threads; i++){
+        pthread_join(pool->threads[i], NULL);
+    }
 }
 
 void thread_pool_cleanup(ThreadPool* pool){
+    if (pool == NULL) return;
 
+    if (pool->threads != NULL) {
+        free(pool->threads);
+        pool->threads = NULL; // [안전] 댕글링 포인터 방지
+    }
+
+    // 2. 큐 내부 자원 해제
+    task_queue_free(&pool->queue);
 }
