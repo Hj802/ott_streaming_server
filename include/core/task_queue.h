@@ -17,6 +17,8 @@ typedef struct{
     int head;           // pop 위치
     int tail;           // push 위치
 
+    bool stop;           // 서버 종료 시 스레드를 깨우기 위한 플래그
+    
     pthread_mutex_t mutex;          // 동기화
     pthread_cond_t cond_not_empty;  // 비어있지 않음을 알림 (pop 대기용)
     pthread_cond_t cond_not_full;   // 꽉 차있지 않음을 알림 (push 대기용)
