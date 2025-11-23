@@ -32,6 +32,6 @@ int task_queue_init(TaskQueue* q, int capacity);
 void task_queue_destroy(TaskQueue* q);
 
 // push, pop
-void task_queue_push(TaskQueue* q, Task task);  // 꽉 차면 대기 
-Task task_queue_pop(TaskQueue *q);              // 비면 대기 
+void task_queue_enqueue(TaskQueue* q, Task task);  // 꽉 차면 대기 
+Task task_queue_dequeue(TaskQueue *q);              // 비면 대기 
 #endif
