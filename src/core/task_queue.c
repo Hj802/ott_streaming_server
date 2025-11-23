@@ -73,7 +73,7 @@ int task_queue_try_enqueue(TaskQueue* q, Task task){
     // 이미 종료 신호가 왔다면 더 이상 받지 않음
     if (q->stop) {
         pthread_mutex_unlock(&q->mutex);
-        return; 
+        return -2; 
     }
 
     if (q->size == q->capacity) {
@@ -87,6 +87,7 @@ int task_queue_try_enqueue(TaskQueue* q, Task task){
 
     pthread_cond_signal(&q->cond_not_empty);
     pthread_mutex_unlock(&q->mutex);
+    return 0;
 }
 
 // Consumer
