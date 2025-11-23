@@ -59,6 +59,7 @@ int thread_pool_init(ThreadPool* pool, int num_threads, int queue_capacity){
         arg->idx = i;
 
         if (pthread_create(&pool->threads[i], NULL, worker_thread_func, arg) != 0) {
+            free(arg);
             perror("Failed to create worker thread");
             // 롤백 로직 (All or Nothing)
             task_queue_shutdown(&pool->queue);
