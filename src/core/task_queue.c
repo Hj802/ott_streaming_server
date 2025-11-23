@@ -67,6 +67,28 @@ void task_queue_enqueue(TaskQueue* q, Task task){
     pthread_mutex_unlock(&q->mutex);
 }
 
+int task_queue_try_enqueue(TaskQueue* q, Task task){
+    pthread_mutex_lock(&q->mutex);
+
+    // 이미 종료 신호가 왔다면 더 이상 받지 않음
+    if (q->stop) {
+        pthread_mutex_unlock(&q->mutex);
+        return; 
+    }
+
+    if (q->size == q->capacity) {
+        pthread_mutex_unlock(&q->mutex);
+        return -1;
+    }
+
+    q->tasks[q->tail] = task;
+    q->tail = (q->tail + 1) % q->capacity;
+    q->size++;
+
+    pthread_cond_signal(&q->cond_not_empty);
+    pthread_mutex_unlock(&q->mutex);
+}
+
 // Consumer
 Task task_queue_dequeue(TaskQueue *q){
     pthread_mutex_lock(&q->mutex);

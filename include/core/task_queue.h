@@ -32,7 +32,13 @@ int task_queue_init(TaskQueue* q, int capacity);
 void task_queue_shutdown(TaskQueue* q);
 void task_queue_free(TaskQueue* q);
 
-// push, pop
+// 연산
 void task_queue_enqueue(TaskQueue* q, Task task);  // 꽉 차면 대기 
+/**
+ * @brief 큐에 작업을 넣으려 시도함 (Non-blocking)
+ * @return 성공시 0, 큐가 꽉 찼으면 -1
+ */
+int task_queue_try_enqueue(TaskQueue* q, Task task); 
 Task task_queue_dequeue(TaskQueue *q);              // 비면 대기 
 #endif
+
