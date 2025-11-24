@@ -84,7 +84,7 @@ static void* worker_thread_func(void* arg){
     while(true){
         Task task = task_queue_dequeue(&pool->queue);
         if(task.function == NULL && task.arg == NULL){
-            printf("Worker thread %lu stopping.\n", (unsigned long)pthread_self());
+            printf("Worker-%d stopping.\n", idx);
             break;
         }
         task.function(task.arg);
