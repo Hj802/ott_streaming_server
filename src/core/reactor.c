@@ -1,14 +1,3 @@
-/*
-#역할: Event Loop 그 자체. epoll의 Wrapper
-
-# 핵심 기능: 
-- reactor_create(): epoll_create1 호출.
-- reactor_add(fd, callback): 감시할 소켓(fd)과, 이벤트 발생 시 실행할 함수(callback)를 등록.
-- reactor_run(): epoll_wait를 무한 루프(while(1))로 돌면서, 이벤트가 터지면 등록된 callback 함수를 실행.
-- 시니어의 팁: 모든 소켓은 Non-blocking 모드로 설정되어야 하네. (fcntl 사용)
-
-- 한순간도 blocking 되면 X
-*/
 #define _POSIX_C_SOURCE 200809L
 
 #include <sys/types.h>
@@ -25,6 +14,7 @@
 #include "core/reactor.h"
 #include "core/thread_pool.h"
 #include "core/config_loader.h"
+#include "app/client_context.h"
 
 #define MAX_EVENTS 1024
 
@@ -71,7 +61,7 @@ int reactor_init(Reactor *reactor, ThreadPool *pool, const ServerConfig *config)
             continue;
         }
 
-        if (bind(listen_socket, rp->ai_addr, rp->ai_addrlen) == 0) {
+        if (bind(listen_socket, (struct sockaddr *)rp->ai_addr, rp->ai_addrlen) == 0) {
             break; // 바인딩 성공. 루프 탈출
         }
 
@@ -114,7 +104,7 @@ int reactor_init(Reactor *reactor, ThreadPool *pool, const ServerConfig *config)
     // 리스너 등록
     struct epoll_event event = {0};
     event.data.fd = reactor->listen_fd;
-    event.events = EPOLLIN;
+    event.events = EPOLLIN;     // Level Trigger
     if (epoll_ctl(reactor->epoll_fd, EPOLL_CTL_ADD, reactor->listen_fd, &event) < 0){
         perror("epoll_ctl() failed");
         close(reactor->listen_fd);
@@ -132,7 +122,78 @@ static int set_nonblocking(int socket_fd){
 }
 
 void reactor_run(Reactor* reactor){
+    struct epoll_event events[MAX_EVENTS];
+    reactor->running = true;
 
+    printf("Reactor loop started.\n");
+    while(reactor->running){
+        time_t timeout = 1000;
+        int n_events = epoll_wait(reactor->epoll_fd, events, MAX_EVENTS, -1);
+        if (n_events < 0){
+            if (errno == EINTR) continue;
+            perror("epoll_wait() failed.");
+            break;
+        }
+
+        for (int i = 0; i < n_events; i++){
+            if (events[i].data.fd == reactor->listen_fd){
+                struct sockaddr_in client_addr;
+                socklen_t addr_len = sizeof(client_addr);
+                int client_fd = accept4(reactor->listen_fd,
+                                        (struct sockaddr *)&client_addr,
+                                        &addr_len,
+                                        SOCK_NONBLOCK | SOCK_CLOEXEC);
+                if (client_fd < 0){
+                    if (errno != EAGAIN && errno != EWOULDBLOCK) {
+                        perror("accept4 failed"); 
+                    }
+                    continue;
+                }
+
+                // ClientContext 해제, 생성: malloc/free (추후 Memory Pool로)
+                ClientContext* ctx = malloc(sizeof(ClientContext));
+                if (ctx == NULL){
+                    perror("ClientContext malloc failed");
+                    close(client_fd);
+                    continue;
+                }
+
+                // Context 초기화
+                memset(ctx, 0, sizeof(ClientContext)); // 0으로 밀어서 쓰레기값 방지
+                ctx->client_fd = client_fd;
+                ctx->last_active = time(NULL);
+                ctx->state = STATE_REQ_RECEIVING;
+                ctx->file_fd = -1;
+
+                // 클라이언트 ip 저장 (로그용)
+                inet_ntop(AF_INET, &client_addr.sin_addr, ctx->client_ip, INET_ADDRSTRLEN);
+                printf("New Connection: %s (FD: %d)\n", ctx->client_ip, ctx->client_fd);
+
+                struct epoll_event client_event = {0};
+                client_event.data.ptr = ctx;
+                client_event.events = EPOLLIN | EPOLLONESHOT;
+
+                if (epoll_ctl(reactor->epoll_fd, EPOLL_CTL_ADD, client_fd, &client_event)){
+                    perror("client: epoll_ctl failed");
+                    close(client_fd);
+                    free(ctx);
+                    continue;
+                }
+            } // listen fd
+            else if (events[i].data.fd != reactor->listen_fd) { 
+                ClientContext *ctx = (ClientContext*)events[i].data.ptr;
+
+                // 이미 처리 중이면 continue (Race Condition 방지)
+                if(ctx->state == STATE_PROCESSING) continue;
+                
+                ctx->state = STATE_PROCESSING;
+                ctx->last_active = time(NULL); // 활동 시간 갱신
+
+                // thread_pool_submit(reactor->pool)
+            }
+        }// for
+    } // while(true)
+    printf("Reactor loop finished.\n");
 }
 
 
