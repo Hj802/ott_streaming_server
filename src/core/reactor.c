@@ -198,10 +198,21 @@ void reactor_run(Reactor* reactor){
 
 
 void reactor_stop(Reactor* reactor){
-
+    if(reactor) reactor->running = false;
 }
 
 
 void reactor_destroy(Reactor* reactor){
-    
+    if(!reactor) return;
+
+    if (reactor->listen_fd > 0) {
+        close(reactor->listen_fd);
+        reactor->listen_fd = -1;
+    }
+
+    if (reactor->epoll_fd > 0) {
+        close(reactor->epoll_fd);
+        reactor->epoll_fd = -1;
+    }
+    // thread_pool은 main에서 정리
 }
