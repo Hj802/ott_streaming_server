@@ -12,6 +12,13 @@ typedef enum {
     STATE_CLOSED                // 종료 대기
 } ClientState;
 
+typedef enum {
+    HTTP_GET,
+    HTTP_POST,
+    HTTP_OPTIONs,
+    HTTP_UNKNOWN
+} Method;
+
 typedef struct {
     int client_fd;                      // 클라이언트 소켓
     char client_ip[INET_ADDRSTRLEN];    // 클라이언트 ip
@@ -22,6 +29,9 @@ typedef struct {
     int buffer_sent;    // 현재까지 보낸 바이트 수
 
     ClientState state;
+
+    Method method;
+    char request_path[512];
 
     int file_fd;            
     off_t file_offset;  // 현재 파일 위치
