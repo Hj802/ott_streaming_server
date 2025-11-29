@@ -1,7 +1,7 @@
 #ifndef STREAM_HANDLER_H
 #define STREAM_HANDLER_H
 
-typedef ClientContext ClientContext;
+typedef struct ClientContext ClientContext;
 
 /**
  * @brief 비디오 스트리밍 요청을 처리하는 핵심 함수
