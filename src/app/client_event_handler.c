@@ -22,6 +22,11 @@ void handle_client_event(void* arg) {
             
         case STATE_CLOSED:
             // 정리 로직
+            // 이미 닫힌 상태라면 자원 해제 확인 후 리턴
+            // 보통은 여기까지 오지 않도록 epoll에서 제거되어야 함
+            break;
+        default:
+            fprintf(stderr, "Unknown State: %d\n", ctx->state);
             break;
     }
 }
