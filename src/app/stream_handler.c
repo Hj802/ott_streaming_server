@@ -1,15 +1,3 @@
-// R6, R8, R9: range 요청, 스트리밍 처리
-
-/*
-# 역할: 동영상 스트리밍의 핵심. 가장 복잡한 곳.
-
-# 핵심 기능:
-- handle_streaming(filename, range_header):
-- Range: bytes=100- 헤더 파싱.
-- http_response_header 생성 (206 Partial Content).
-- 파일 전송: sendfile() 시스템 콜을 사용하여 커널이 직접 파일을 소켓으로 쏘게 만듦 (Zero-copy).
-- R7(이어보기) 저장을 위해 "현재 몇 초까지 봤는지" 정보를 주기적으로 db_handler에 업데이트 요청.
-*/
 #define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,55 +7,52 @@
 #include <fcntl.h>
 #include <errno.h>
 #include "app/stream_handler.h"
-#include "include/app/client_context.h"
+#include "app/http_utils.h"
+#include "app/client_context.h"
 
-static const enum {
-    SEND_416 = -4,
-    SEND_403 = -3,
-    SEND_404 = -2,
-    FILE_ERR = -1,
-    RESULT_OK = 0
-};
-
-static int start_streaming(ClientContext *ctx);
+static HttpResult start_streaming(ClientContext *ctx);
 static void continue_sending_header(ClientContext *ctx);
 static void continue_sending_file(ClientContext *ctx);
 
 void handle_streaming_request(ClientContext *ctx){
-    switch (ctx->state)
-    {
-    case STATE_REQ_RECEIVING:
-    case STATE_PROCESSING:
-        if (start_streaming(ctx) < 0) {
-            // 에러 발생 시 여기서 에러 페이지 전송 로직 호출 필요
-                // 예: send_error_response(ctx, 404);
-                // 지금은 로깅만 하고 종료
-                printf("Streaming Start Failed\n");
-                close(ctx->client_fd); // 연결 종료
-                return;
-        }
-        // 성공하면 바로 헤더 전송으로 넘어감 (Fall-through)
-        // break; (의도적으로 뺌, 바로 보내기 위해)
-    case STATE_RES_SENDING_HEADER:
-        continue_sending_header(ctx);
-        break;
-    case STATE_RES_SENDING_BODY:
-        continue_sending_file(ctx);
-        break;
+    if (ctx->state == STATE_REQ_RECEIVING || ctx->state == STATE_PROCESSING) {
 
-    default:
-        break;
-    } // switch
+        HttpResult ret = start_streaming(ctx);
+        
+        if (ret != RESULT_OK) {
+            switch (ret) {
+                case ERR_NOT_FOUND: 
+                    send_error_response(ctx, -404); 
+                    break;
+                case ERR_FORBIDDEN: 
+                    send_error_response(ctx, -403); 
+                    break;
+                case ERR_RANGE_NOT_SATISFIABLE: 
+                    send_error_response(ctx, -416); 
+                    break;
+                default: 
+                    send_error_response(ctx, -500); 
+                    break;
+            }
+            return; // 에러 전송 후 종료 (send_error 내부에서 close/free 됨)
+        }
+    } // STATE_REQ_RECEIVING || STATE_PROCESSING
+    else if (ctx->state == STATE_RES_SENDING_HEADER){
+        continue_sending_header(ctx);
+    }
+    else if (ctx->state == STATE_RES_SENDING_BODY){
+        continue_sending_file(ctx);
+    }
 }
 
-static int start_streaming(ClientContext *ctx) {
+static HttpResult start_streaming(ClientContext *ctx) {
     int fd = open(ctx->request_path, O_RDONLY | O_CLOEXEC);
     if (fd < 0) {
         // 권한 처리 및 에러 구분
-        if (errno == ENOENT) return SEND_404;      // 파일 없음
-        if (errno == EACCES) return SEND_403;      // 권한 없음 (Permission denied)
+        if (errno == ENOENT) return ERR_NOT_FOUND;  // 404
+        if (errno == EACCES) return ERR_FORBIDDEN;  // 403
         perror("open failed");
-        return FILE_ERR;
+        return ERR_INTERNAL_SERVER; // 500
     }
 
     // 파일 정보 획득
@@ -75,14 +60,14 @@ static int start_streaming(ClientContext *ctx) {
     if (fstat(fd, &st) < 0) {
         perror("fstat failed");
         close(fd);
-        return FILE_ERR;
+        return ERR_INTERNAL_SERVER; // 500
     }
     
     // 유효성 검사
     off_t total_size = st.st_size;
     if (ctx->range_start >= total_size) {
         close(fd);
-        return SEND_416; // 416 Range Not Satisfiable
+        return ERR_RANGE_NOT_SATISFIABLE; // 416
     }
 
     // 범위 계산
@@ -120,7 +105,7 @@ static int start_streaming(ClientContext *ctx) {
     if (len < 0 || len >= sizeof(ctx->buffer)) {
         fprintf(stderr, "Header too long\n");
         close(fd);
-        return FILE_ERR;
+        return ERR_INTERNAL_SERVER; // 500
     }
     ctx->buffer_len = len;
 
