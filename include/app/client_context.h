@@ -15,7 +15,7 @@ typedef enum {
 typedef enum {
     HTTP_GET,
     HTTP_POST,
-    HTTP_OPTIONs,
+    HTTP_OPTIONS,
     HTTP_UNKNOWN
 } Method;
 
@@ -34,7 +34,8 @@ typedef struct {
     char request_path[512];
 
     int file_fd;            
-    off_t file_offset;  // 현재 파일 위치
+    off_t range_start;  // range 시작점, 현재 파일 위치
+    off_t range_end;    // range 끝점 (-1이면 끝까지)
 
     size_t bytes_remaining; // 남은 파일 크기 (Chunk)
 } ClientContext;
