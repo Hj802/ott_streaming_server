@@ -1,6 +1,7 @@
 #ifndef HTTP_HANDLER_H
 #define HTTP_HANDLER_H
 
+typedef struct ClientContext ClientContext;
 
 /**
  * @brief 워커 스레드가 수행할 HTTP 요청 처리 진입점
@@ -9,6 +10,6 @@
  * 3. 읽기 -> 파싱 -> 라우팅 -> 응답의 흐름을 지휘.
  * * @param arg (ClientContext*) 타입으로 캐스팅될 인자
  */
-void handle_http_request(void *arg);
+void handle_http_request(ClientContext *ctx);
 
 #endif
