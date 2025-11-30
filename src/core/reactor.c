@@ -14,6 +14,7 @@
 #include "core/reactor.h"
 #include "core/thread_pool.h"
 #include "core/config_loader.h"
+#include "app/client_event_handler.h"
 #include "app/client_context.h"
 
 #define MAX_EVENTS 1024
@@ -114,6 +115,7 @@ int reactor_init(Reactor *reactor, ThreadPool *pool, const ServerConfig *config)
     return 0;
 }
 
+
 static int set_nonblocking(int socket_fd){
     int flag = fcntl(socket_fd, F_GETFL, 0);
     if (flag == -1) return -1;
@@ -121,13 +123,13 @@ static int set_nonblocking(int socket_fd){
     return 0;
 }
 
+
 void reactor_run(Reactor* reactor){
     struct epoll_event events[MAX_EVENTS];
     reactor->running = true;
 
     printf("Reactor loop started.\n");
     while(reactor->running){
-        time_t timeout = 1000;
         int n_events = epoll_wait(reactor->epoll_fd, events, MAX_EVENTS, -1);
         if (n_events < 0){
             if (errno == EINTR) continue;
@@ -157,7 +159,7 @@ void reactor_run(Reactor* reactor){
                     close(client_fd);
                     continue;
                 }
-
+                
                 // Context 초기화
                 memset(ctx, 0, sizeof(ClientContext)); // 0으로 밀어서 쓰레기값 방지
                 ctx->client_fd = client_fd;
@@ -189,7 +191,7 @@ void reactor_run(Reactor* reactor){
                 ctx->state = STATE_PROCESSING;
                 ctx->last_active = time(NULL); // 활동 시간 갱신
 
-                // thread_pool_submit(reactor->pool)
+                thread_pool_submit(reactor->pool, handle_client_event, ctx);
             }
         }// for
     } // while(true)
