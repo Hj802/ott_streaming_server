@@ -129,7 +129,8 @@ static int parse_request(ClientContext *ctx) {
     ctx->request_path[sizeof(ctx->request_path) - 1] = '\0';
 
     // Default Offset 초기화
-    ctx->file_offset = 0;
+    ctx->range_start = 0;
+    ctx->range_end = -1;
 
     // 헤더 라인 파싱 (Range 찾기)
     while ((line = strtok_r(NULL, "\r\n", &saveptr)) != NULL) {
@@ -144,20 +145,21 @@ static int parse_request(ClientContext *ctx) {
             if (strncasecmp(value, "bytes=", 6) == 0) {
                 char *range_val = value + 6;
                 long start = 0;
-                // long end = 0; // 필요하면 사용
+                long end = 0;
 
-                // '-' 뒤의 값은 무시하고 시작점만 가져옴
-                if (sscanf(range_val, "%ld-", &start) == 1) {
-                    ctx->file_offset = (off_t)start;
-                    // printf("Range Request Detected: Start=%ld\n", start);
+                // Closed
+                if (sscanf(range_val, "%ld-%ld", &start, &end) == 2) {
+                    ctx->range_start = (off_t)start;
+                    ctx->range_end   = (off_t)end;
+                } 
+                // Open-ended
+                else if (sscanf(range_val, "%ld-", &start) == 1) {
+                    ctx->range_start = (off_t)start;
+                    ctx->range_end   = -1; // 파일 끝까지
                 }
             } // if "bytes="
         } // if "Range:"
-
-        // 다른 헤더(Content-Length 등)도 여기서 추가 파싱 가능
-
     } // while (line 파싱)
-
     return 0;
 }
 
