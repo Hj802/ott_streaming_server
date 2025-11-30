@@ -112,6 +112,9 @@ static HttpResult start_streaming(ClientContext *ctx) {
     // 상태 변경
     ctx->state = STATE_RES_SENDING_HEADER;
 
+    // sendfile() 추가
+    // ctx->buffer_sent 갱신
+
     printf("[Stream] File: %s, Range: %ld-%ld, Size: %lu\n", 
            ctx->request_path, ctx->range_start, file_end, content_length);
 
