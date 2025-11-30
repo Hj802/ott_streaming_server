@@ -1,4 +1,3 @@
-#define _POSIX_C_SOURCE 200809L
 // http_parser.c의 진화.        파싱 + 요청 처리
 
 /*
@@ -11,6 +10,7 @@
     URL이 /watch이면 -> stream_handler 호출.
     URL이 /이면 -> index.html 읽어서 전송.
 */
+#define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -31,9 +31,8 @@ static int parse_request (ClientContext *ctx);
 static void route_request (ClientContext *ctx);
 static void rearm_epoll (ClientContext *ctx);
 
-void handle_http_request(void *arg) {
-    ClientContext *ctx = (ClientContext*)arg;
-
+void handle_http_request(ClientContext *ctx) {
+    //////// 수정 필요
     int read_status = try_read_request(ctx);
 
     if (read_status == READ_ERR) {
