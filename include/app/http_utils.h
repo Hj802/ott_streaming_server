@@ -4,14 +4,20 @@
 typedef struct ClientContext ClientContext;
 
 typedef enum {
-    RESULT_OK = 0,
-    
     // 에러 코드 (음수)
-    ERR_INTERNAL_SERVER = -1,   // 500
-    ERR_NOT_FOUND = -2,         // 404
-    ERR_FORBIDDEN = -3,         // 403
-    ERR_RANGE_NOT_SATISFIABLE = -4, // 416
-    ERR_BAD_REQUEST = -5        // 400
+
+    // 4XX: 클라이언트 오류
+    ERR_BAD_REQUEST = -400,       
+    ERR_FORBIDDEN = -403,             
+    ERR_NOT_FOUND = -404,              
+    ERR_RANGE_NOT_SATISFIABLE = -416,  
+
+    // 5XX: 서버 오류
+    ERR_INTERNAL_SERVER = -500,       
+    ERR_SERVICE_UNAVAILABLE = -503,    
+
+    // 정상
+    RESULT_OK = 0
 } HttpResult;
 
 /**
