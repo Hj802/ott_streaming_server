@@ -218,3 +218,15 @@ void reactor_destroy(Reactor* reactor){
     }
     // thread_pool은 main에서 정리
 }
+
+int reactor_update_event(int epoll_fd, int target_fd, int events, void *context){
+    struct epoll_event ev = {0};
+    ev.events = events; 
+    ev.data.ptr = context;
+
+    if (epoll_ctl(epoll_fd, EPOLL_CTL_MOD, target_fd, &ev) < 0) {
+        perror("reactor_update_event() failed");
+        return -1;
+    }
+    return 0;
+}
