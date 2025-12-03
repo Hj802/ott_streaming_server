@@ -20,6 +20,7 @@ typedef enum {
 } Method;
 
 typedef struct {
+    int epoll_fd;
     int client_fd;                      // 클라이언트 소켓
     char client_ip[INET_ADDRSTRLEN];    // 클라이언트 ip
     time_t last_active;                 // Resource Leak 방지
