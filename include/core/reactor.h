@@ -46,4 +46,14 @@ void reactor_stop(Reactor *reactor);
  */
 void reactor_destroy(Reactor *reactor);
 
+/**
+ * @brief 감시 중인 FD의 이벤트를 변경합니다. (EPOLL_CTL_MOD 래퍼)
+ * * @param epoll_fd  Reactor의 epoll 인스턴스
+ * @param target_fd 감시 대상 파일 디스크립터 (Client Socket)
+ * @param events    감시할 이벤트 (EPOLLIN, EPOLLOUT 등)
+ * @param context   이벤트 발생 시 돌려받을 컨텍스트 포인터 (User Data)
+ * @return 성공 시 0, 실패 시 -1
+ */
+int reactor_update_event(int epoll_fd, int target_fd, int events, void *context);
+
 #endif
