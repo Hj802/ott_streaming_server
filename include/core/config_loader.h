@@ -4,11 +4,13 @@
 #define MAX_HOST_LEN 128
 
 // 설정값들을 저장할 구조체
-typedef struct {
+typedef struct ServerConfig{
     int port;
-    // int max_clients;
+    int max_clients;
     int timeout_sec;
     int log_level;
+    int queue_capacity;
+    int thread_num;
     char server_host[MAX_HOST_LEN]; // 문자열 설정 예시 추가
 } ServerConfig;
 

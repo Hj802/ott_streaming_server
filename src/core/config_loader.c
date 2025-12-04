@@ -21,11 +21,13 @@ typedef struct {
 
 // 테이블 정의
 static ConfigMapping config_map[] = {
-    {"PORT",        TYPE_INT,    offsetof(ServerConfig, port),          0},
-    // {"MAX_CLIENTS", TYPE_INT,    offsetof(ServerConfig, max_clients),   0},
-    {"TIMEOUT_SEC", TYPE_INT,    offsetof(ServerConfig, timeout_sec),   0},
-    {"LOG_LEVEL",   TYPE_INT,    offsetof(ServerConfig, log_level),     0},
-    {"HOST",        TYPE_STRING, offsetof(ServerConfig, server_host),   128},
+    {"PORT",                TYPE_INT,   offsetof(ServerConfig, port),       0},
+    {"MAX_CLIENTS",         TYPE_INT,   offsetof(ServerConfig, max_clients),   0},
+    {"TIMEOUT_SEC",         TYPE_INT,   offsetof(ServerConfig, timeout_sec),   0},
+    {"LOG_LEVEL",           TYPE_INT,   offsetof(ServerConfig, log_level),     0},
+    {"QUEUE_CAPACITY",      TYPE_INT,   offsetof(ServerConfig, queue_capacity), 0},
+    {"WORKER_THREAD_COUNT", TYPE_INT,   offsetof(ServerConfig, thread_num), 0},
+    {"HOST",                TYPE_STRING,offsetof(ServerConfig, server_host),   MAX_HOST_LEN},
     {NULL, 0, 0} // 배열의 끝
 };
 
@@ -56,9 +58,11 @@ int load_config(const char *filename, ServerConfig *config) {
 
     // 기본값 설정
     config->port = 8080;
-    // config->max_clients = 1000;
+    config->max_clients = 1000;
     config->timeout_sec = 30;
     config->log_level = 1;
+    config->queue_capacity = 1000;
+    config->thread_num = 10;
     strncpy(config->server_host, "localhost", MAX_HOST_LEN - 1);
 
     char line[1024];
