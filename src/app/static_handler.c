@@ -138,8 +138,12 @@ static void send_static_body(ClientContext *ctx) {
 
             ctx->buffer_len = 0;
             ctx->buffer_sent = 0;
-            reactor_update_event(ctx->epoll_fd, ctx->client_fd, 
-                                 EPOLLIN | EPOLLONESHOT, ctx);
+            if (reactor_update_event(ctx->epoll_fd, ctx->client_fd, 
+                                     EPOLLIN | EPOLLONESHOT, ctx) < 0) {
+                perror("stream: rearm epollin failed");
+                close(ctx->client_fd);
+                free(ctx);
+            }
             
             printf("Complete response for: %s\n", ctx->request_path);
             return;
@@ -157,23 +161,34 @@ static void send_static_body(ClientContext *ctx) {
             
             // [수정 전략] 보내는데 성공했으면, 소켓 버퍼가 비었을 수 있으므로 
             // 즉시 다시 EPOLLOUT을 걸어주어 곧바로 다시 호출되게 함.
-            reactor_update_event(ctx->epoll_fd, ctx->client_fd, 
-                                 EPOLLOUT | EPOLLONESHOT, ctx);
+            if (reactor_update_event(ctx->epoll_fd, ctx->client_fd, 
+                                     EPOLLOUT | EPOLLONESHOT, ctx) < 0) {
+                perror("stream: rearm epollout failed");
+                close(ctx->file_fd);
+                close(ctx->client_fd);
+                free(ctx);
+            }
         }
-    } else if (sent == 0) {
-        send_error_response(ctx, 500);
-    } else {
+    } else if (sent < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
             // 소켓 버퍼 꽉 참 -> 쓰기 가능해지면 알려줘
-            reactor_update_event(ctx->epoll_fd, ctx->client_fd, 
-                                 EPOLLOUT | EPOLLONESHOT, ctx);
-            return;
+            if (reactor_update_event(ctx->epoll_fd, ctx->client_fd, 
+                                     EPOLLOUT | EPOLLONESHOT, ctx) < 0) {
+                perror("stream: rearm epollout failed (EAGAIN)");
+                close(ctx->file_fd);
+                close(ctx->client_fd);
+                free(ctx);
+            }
         }
         perror("static: sendfile failed");
         send_error_response(ctx, 500);
     }
+    else { // sent == 0
+        send_error_response(ctx, 500);
+    }
 }
 
+// 정적에 필요한 것들만 있는가? 동적에 필요한 것들도 있는가?
 static const char* get_mime_type(const char* path) {
     const char* ext = strrchr(path, '.');
     if (!ext) return "application/octet-stream"; // 확장자 없음
