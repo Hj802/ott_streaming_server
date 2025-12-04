@@ -1,13 +1,35 @@
-// 지휘자
+#define _POSIX_C_SOURCE 200809L
 
-/*
-# 역할: 프로그램 진입점.
+// core Headers
+#include "core/reactor.h"
+#include "core/thread_pool.h"
+#include "core/config_loader.h"
 
-# 흐름:
-- config 로드.
-- thread_pool_init() (일꾼들 출근).
-- db_init() (장부 준비).
-- reactor_create() (전화기 설치).
-- 서버 소켓 생성 (socket, bind, listen) 후 reactor_add에 등록.
-- reactor_run() (영업 시작 - 무한 대기).
-*/
+// app Headers
+#include "app/http_handler.h"
+#include "app/db_handler.h"
+
+ #include <stdio.h>
+ #include <stdlib.h>
+
+ int main() {
+    ServerConfig config;
+
+    printf("Loading configuration...\n");
+    if (load_config("config/server.conf", &config) == -1) {
+        fprintf(stderr, "Failed to load config.\n");
+        return -1;
+    }
+
+    ThreadPool pool = {0};
+
+    int num_thread = config.thread_num;
+    int queue_capacity = config.queue_capacity;
+
+    thread_pool_init(&pool, num_thread, queue_capacity);
+
+    Reactor reactor = {0};
+
+    reactor_init(&reactor, &pool, &config);
+    reactor_run(&reactor);
+ }
