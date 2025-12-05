@@ -16,6 +16,7 @@
 static HttpResult start_streaming(ClientContext *ctx);
 static void continue_sending_header(ClientContext *ctx);
 static void continue_sending_file(ClientContext *ctx);
+#define MAX_SEND_CHUNK_SIZE (2 * 1024 * 1024)
 
 void handle_streaming_request(ClientContext *ctx){
     if (ctx->state == STATE_REQ_RECEIVING || ctx->state == STATE_PROCESSING) {
@@ -105,7 +106,7 @@ static HttpResult start_streaming(ClientContext *ctx) {
         content_length
     );
 
-    if (len < 0 || len >= sizeof(ctx->buffer)) {
+    if (len < 0 || (size_t)len >= sizeof(ctx->buffer)) {
         fprintf(stderr, "Header too long\n");
         return ERR_INTERNAL_SERVER; // 500
     }
@@ -153,74 +154,77 @@ static void continue_sending_header(ClientContext *ctx) {
 }
 
 static void continue_sending_file(ClientContext *ctx) {
-    // sendfile(out_fd, in_fd, offset_ptr, count)
-    // - ctx->file_offset은 포인터로 전달되므로, 커널이 전송한 만큼 값을 증가시켜 줍니다.
-    // - Non-blocking 소켓이므로 count(bytes_remaining)가 아무리 커도 
-    //   소켓 버퍼가 허용하는 만큼만 보내고 반환됩니다. (Thread Blocking 없음)
-    ssize_t sent = sendfile(ctx->client_fd, ctx->file_fd, 
-                            &ctx->file_offset, ctx->bytes_remaining);
+    size_t total_sent_this_turn = 0; // 이번 턴에 보낸 양 누적
 
-    if (sent > 0) {
-        ctx->bytes_remaining -= sent;
-
-        if (ctx->bytes_remaining == 0) {
-            // [전송 완료]
-            // 1. 파일 자원 해제
-            close(ctx->file_fd);
-            ctx->file_fd = -1;
-
-            // 2. 상태 초기화 (다음 요청 대기)
-            ctx->state = STATE_REQ_RECEIVING;
-            ctx->buffer_len = 0; // 요청 버퍼 리셋
-            ctx->buffer_sent = 0;
-
-            // 3. 로그 출력
-            printf("[Stream] Completed: %s (Client: %s)\n", ctx->request_path, ctx->client_ip);
-
-            // 4. 감시 모드 변경: 말하기(OUT) -> 듣기(IN)
-            // 이제 클라이언트가 보낼 다음 HTTP 요청을 기다립니다.
+    while (1) {
+        // [안전장치] 스레드 독점 방지
+        // 이번 턴에 지정한 용량(2MB) 이상을 보냈다면, 
+        // 소켓이 비어있어도 강제로 루프를 끊고 양보.
+        if (total_sent_this_turn >= MAX_SEND_CHUNK_SIZE) {
             if (reactor_update_event(ctx->epoll_fd, ctx->client_fd, 
-                                     EPOLLIN | EPOLLONESHOT, ctx) < 0) {
-                perror("stream: rearm epollin failed");
+                                     EPOLLOUT | EPOLLONESHOT, ctx) < 0) {
+                perror("stream: yield rearm failed");
+                close(ctx->file_fd);
                 close(ctx->client_fd);
                 free(ctx);
             }
+            return;
+        }
+
+        // 데이터 전송
+        ssize_t sent = sendfile(ctx->client_fd, ctx->file_fd, 
+                                &ctx->file_offset, ctx->bytes_remaining);
+
+        if (sent > 0) {
+            ctx->bytes_remaining -= sent;
+            total_sent_this_turn += sent; // 누적
+
+            // 전송 완료
+            if (ctx->bytes_remaining == 0) {
+                // 자원 정리
+                close(ctx->file_fd);
+                ctx->file_fd = -1;
+
+                // 상태 초기화
+                ctx->state = STATE_REQ_RECEIVING;
+                ctx->buffer_len = 0;
+                ctx->buffer_sent = 0;
+
+                // 로그
+                printf("[Stream] Completed: %s (Client: %s)\n", ctx->request_path, ctx->client_ip);
+
+                // 듣기 모드(EPOLLIN) 전환
+                if (reactor_update_event(ctx->epoll_fd, ctx->client_fd, 
+                                         EPOLLIN | EPOLLONESHOT, ctx) < 0) {
+                    close(ctx->client_fd);
+                    free(ctx);
+                }
+                return;
+            }
+            // 아직 남았으면 루프 계속 (limit 체크하러 감)
+            continue; 
         } 
-        else {
-            // [전송 진행 중]
-            // 소켓 버퍼가 찼거나 한번에 다 못 보냄 -> 다시 쓰기 가능해지면 호출해달라고 요청
-            // 공평성(Fairness)을 위해 루프를 돌지 않고 양보(Yield)합니다.
-            if (reactor_update_event(ctx->epoll_fd, ctx->client_fd, 
-                                     EPOLLOUT | EPOLLONESHOT, ctx) < 0) {
-                perror("stream: rearm epollout failed");
-                close(ctx->file_fd);
-                close(ctx->client_fd);
-                free(ctx);
+        else if (sent < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                // [진짜 대기] 소켓 버퍼 꽉 참 -> Epoll 대기
+                if (reactor_update_event(ctx->epoll_fd, ctx->client_fd, 
+                                         EPOLLOUT | EPOLLONESHOT, ctx) < 0) {
+                    perror("stream: rearm failed (EAGAIN)");
+                    close(ctx->file_fd);
+                    close(ctx->client_fd);
+                    free(ctx);
+                }
+                return;
             }
-        }
-    } 
-    else if (sent < 0) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            // [대기] 소켓 버퍼 꽉 참
-            if (reactor_update_event(ctx->epoll_fd, ctx->client_fd, 
-                                     EPOLLOUT | EPOLLONESHOT, ctx) < 0) {
-                perror("stream: rearm epollout failed (EAGAIN)");
-                close(ctx->file_fd);
-                close(ctx->client_fd);
-                free(ctx);
-            }
-        } else {
-            // [에러] 연결 끊김(EPIPE) 등
-            // sendfile 에러는 복구 불가능한 경우가 많음
+            
+            // [에러]
             perror("stream: sendfile error");
-            // 내부에서 close(file_fd), close(client_fd), free(ctx) 수행
-            send_error_response(ctx, 500); 
+            send_error_response(ctx, 500);
+            return;
+        } 
+        else { // sent == 0
+             send_error_response(ctx, 500);
+             return;
         }
-    } 
-    else { // sent == 0
-        // [예외] 파일의 끝에 도달하지 않았는데 0이 리턴됨? (거의 발생 안 함)
-        // EOF 처리는 위에서 bytes_remaining으로 하므로, 여기는 비정상 상황
-        fprintf(stderr, "stream: unexpected EOF from sendfile\n");
-        send_error_response(ctx, 500);
     }
 }
