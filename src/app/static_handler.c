@@ -123,12 +123,10 @@ static void send_static_header(ClientContext *ctx) {
 }
 
 static void send_static_body(ClientContext *ctx) {
-    off_t offset = ctx->file_offset;
-    ssize_t sent = sendfile(ctx->client_fd, ctx->file_fd, &offset, ctx->bytes_remaining);
+    ssize_t sent = sendfile(ctx->client_fd, ctx->file_fd, &ctx->file_offset, ctx->bytes_remaining);
 
     if (sent > 0) {
         ctx->bytes_remaining -= sent;
-        ctx->file_offset = offset;
 
         if (ctx->bytes_remaining <= 0) {
             close(ctx->file_fd);
