@@ -2,13 +2,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/socket.h>
+#include <sys/unistd.h>
 #include <sys/epoll.h>
 #include <sys/errno.h>
 #include "app/http_handler.h"
 #include "app/stream_handler.h"
 #include "app/http_utils.h"
 #include "app/client_context.h"
+#include "app/static_handler.h"
 #include "core/reactor.h"
 
 static const enum {
@@ -156,9 +159,41 @@ static void route_request(ClientContext *ctx) {
         return;
     }
 
-    if (strcmp(ctx->request_path, "/") == 0) {
+    /* if (strcmp(ctx->request_path, "/") == 0) {
         strncpy(ctx->request_path, "/index.html", sizeof(ctx->request_path) - 1);
+    } */
+    // [수정] 임시 경로 버퍼
+    char file_path[512] = {0};
+
+    // 2. [경로 매핑] 루트 경로("/") -> "static/index.html"
+    if (strcmp(ctx->request_path, "/") == 0) {
+        snprintf(file_path, sizeof(file_path), "static/index.html");
     }
+    // 3. [경로 매핑] 나머지 정적 파일들 (예: /style.css -> static/style.css)
+    // 앞의 '/'를 제거하고 'static/'을 붙임
+    else if (ctx->request_path[0] == '/') {
+        // 확장자 확인
+        const char *ext = strrchr(ctx->request_path, '.');
+        if (ext && (strcmp(ext, ".html") == 0 || strcmp(ext, ".css") == 0 || 
+                    strcmp(ext, ".js") == 0 || strcmp(ext, ".png") == 0)) {
+            snprintf(file_path, sizeof(file_path), "static%s", ctx->request_path);
+        } else {
+             // mp4 등은 그대로 둠 (혹은 별도 폴더가 있다면 여기서 처리)
+             strncpy(file_path, ctx->request_path + 1, sizeof(file_path) - 1); 
+             // 주의: open() 할 때 절대 경로(/)를 피하기 위해 +1 사용 (상대 경로로 변환)
+        }
+    } else {
+        strncpy(file_path, ctx->request_path, sizeof(file_path) - 1);
+    }
+
+    // [중요] 변환된 파일 경로를 context에 다시 저장
+    strncpy(ctx->request_path, file_path, sizeof(ctx->request_path) - 1);
+
+
+
+
+
+
 
     // 3. [API 처리] 로그인/로그아웃 등 로직 처리
     if (strcmp(ctx->request_path, "/login") == 0 && ctx->method == HTTP_POST) {
