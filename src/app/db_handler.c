@@ -8,6 +8,7 @@
 #include <sys/epoll.h>
 #include <sqlite3.h>
 #include "app/db_handler.h"
+#include "app/http_utils.h"
 #include "app/client_context.h"
 
 // 데이터베이스 연결 객체 (파일 내부 전역 변수)
@@ -16,7 +17,6 @@ static sqlite3 *g_db = NULL;
 
 // 내부 헬퍼 함수
 static int seed_initial_data();
-static int send_all_blocking(int fd, const char *data, size_t len); // [신규] 안전 전송
 
 int db_init(const char *db_path) {
     int rc = sqlite3_open(db_path, &g_db);
@@ -242,31 +242,4 @@ int db_verify_user(const char *username, const char *password) {
 
     sqlite3_finalize(stmt);
     return user_id;
-}
-
-// 헬퍼 함수: 모든 데이터를 보낼 때까지 반복 (Blocking)
-static int send_all_blocking(int fd, const char *data, size_t len) {
-    size_t total_sent = 0;
-    while (total_sent < len) {
-        ssize_t sent = send(fd, data + total_sent, len - total_sent, 0);
-        if (sent > 0) {
-            total_sent += sent;
-        } else if (sent < 0) {
-            if (errno == EINTR) continue; // 시그널 인터럽트는 무시하고 계속
-            // [중요] EAGAIN 처리가 딜레마임. 
-            // Reactor 패턴에서는 기다려야 하지만, 여기서는 복잡도를 피하기 위해
-            // 잠시(Busy Wait or short sleep) 기다리거나 에러로 처리.
-            // 현실적으로 JSON 전송 중 버퍼가 꽉 차는 건 드문 일이므로 에러 처리.
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                // 정말 정교하게 하려면 usleep(1000) 등을 줄 수도 있지만,
-                // 여기서는 "Partial Send 발생 시 에러"로 규정.
-                // (스트리밍 서버의 API 응답이므로 이 정도 타협은 가능)
-                return -1; 
-            }
-            return -1; // 진짜 에러
-        } else {
-            return -1; // Connection closed
-        }
-    }
-    return 0; // 성공
 }
