@@ -23,7 +23,7 @@ static const char* get_status_text(int code) {
 void send_error_response(ClientContext *ctx, int status_code) {
     if (!ctx) return;
 
-    status_code = -status_code;
+    if (status_code > 0) status_code = -status_code;
     // [안전장치] 이미 파일 데이터를 보내던 중이라면 에러 헤더를 보낼 수 없음
     // 프로토콜이 깨지므로 그냥 조용히 연결을 끊는 것이 상책
     if (ctx->state == STATE_RES_SENDING_BODY) {
