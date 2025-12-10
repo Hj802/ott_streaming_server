@@ -23,6 +23,14 @@ int db_init(const char *db_path);
 void handle_api_video_list(ClientContext *ctx);
 
 /**
+ * @brief 사용자 아이디와 비밀번호를 검증합니다.
+ * @param username 클라이언트가 입력한 아이디
+ * @param password 클라이언트가 입력한 비밀번호
+ * @return 검증 성공 시 user_id (양수), 일치하는 유저 없음 -1, DB 오류 -2
+ */
+int db_verify_user(const char *username, const char *password);
+
+/**
  * @brief 데이터베이스 연결을 닫고 자원을 해제합니다.
  * 서버 종료(main 종료) 시 호출해야 합니다.
  */

@@ -60,6 +60,20 @@ int db_init(const char *db_path) {
         return -1;
     }
 
+    const char *sql_create_users = 
+        "CREATE TABLE IF NOT EXISTS users ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "username TEXT NOT NULL UNIQUE, "
+        "password TEXT NOT NULL" // 실제 운영 시 해시값 저장 필수
+        ");";
+
+    if (sqlite3_exec(g_db, sql_create_users, 0, 0, 0) != SQLITE_OK) {
+        fprintf(stderr, "[DB] Create table failed: %s\n", err_msg);
+        sqlite3_free(err_msg);
+        sqlite3_close(g_db);
+        return -1;
+    }
+
     // 초기 데이터 주입
     seed_initial_data();
     return 0;
@@ -206,7 +220,31 @@ void handle_api_video_list(ClientContext *ctx) {
     }
 }
 
-// [신규] 헬퍼 함수: 모든 데이터를 보낼 때까지 반복 (Blocking)
+int db_verify_user(const char *username, const char *password) {
+    if (!g_db) return -2;
+
+    sqlite3_stmt *stmt;
+    // SQL Injection 방지를 위한 바인딩 쿼리
+    const char *sql = "SELECT id FROM users WHERE username = ? AND password = ?;";
+    
+    if (sqlite3_prepare_v2(g_db, sql, -1, &stmt, 0) != SQLITE_OK) {
+        return -2;
+    }
+
+    // 파라미터 바인딩
+    sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, password, -1, SQLITE_STATIC);
+
+    int user_id = -1;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        user_id = sqlite3_column_int(stmt, 0);
+    }
+
+    sqlite3_finalize(stmt);
+    return user_id;
+}
+
+// 헬퍼 함수: 모든 데이터를 보낼 때까지 반복 (Blocking)
 static int send_all_blocking(int fd, const char *data, size_t len) {
     size_t total_sent = 0;
     while (total_sent < len) {
