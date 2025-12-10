@@ -149,9 +149,57 @@ int session_get_user(const char *session_id) {
 }
 
 void session_remove(const char *session_id) {
+    if (!g_session_table || !session_id) return;
 
+    unsigned long h = hash_djb2(session_id);
+    int bucket_idx = h % g_session_table->bucket_count;
+
+    pthread_mutex_lock(&g_session_table->mutex);
+
+    SessionNode *curr = g_session_table->buckets[bucket_idx];
+    SessionNode *prev = NULL;
+
+    while (curr) {
+        if (strcmp(curr->session_id, session_id) == 0) {
+            // [연결 끊기] 
+            if (prev) prev->next = curr->next;
+            else g_session_table->buckets[bucket_idx] = curr->next;
+
+            free(curr);
+            printf("[Session] Manually removed: %s\n", session_id);
+            break;
+        }
+        prev = curr;
+        curr = curr->next;
+    }
+
+    pthread_mutex_unlock(&g_session_table->mutex);
 }
 
 void session_system_cleanup(void) {
+    if (!g_session_table) return;
 
+    pthread_mutex_lock(&g_session_table->mutex);
+
+    // 1. 모든 버킷을 순회하며 노드들 삭제
+    for (int i = 0; i < g_session_table->bucket_count; i++) {
+        SessionNode *curr = g_session_table->buckets[i];
+        while (curr) {
+            SessionNode *temp = curr;
+            curr = curr->next;
+            free(temp); // 개별 노드 해제
+        }
+    }
+
+    // 2. 버킷 배열 및 테이블 본체 해제
+    free(g_session_table->buckets);
+    
+    // Mutex 해제를 위해 Lock 해제 후 Destroy
+    pthread_mutex_unlock(&g_session_table->mutex);
+    pthread_mutex_destroy(&g_session_table->mutex);
+
+    free(g_session_table);
+    g_session_table = NULL;
+
+    printf("[Session] System cleaned up and resources freed.\n");
 }
