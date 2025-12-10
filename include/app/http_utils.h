@@ -38,4 +38,13 @@ void send_error_response(ClientContext *ctx, int status_code);
  */
 int http_get_form_param(const char *body, const char *key, char *out_buf, size_t out_len);
 
+/**
+ * @brief 소켓 버퍼 상태와 관계없이 모든 데이터를 보낼 때까지 반복합니다 (Blocking).
+ * @param fd 대상 소켓 파일 디스크립터
+ * @param data 보낼 데이터 버퍼
+ * @param len 보낼 데이터 총 길이
+ * @return 성공 0, 실패 -1
+ */
+int send_all_blocking(int fd, const char *data, size_t len);
+
 #endif
