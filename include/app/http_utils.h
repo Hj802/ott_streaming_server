@@ -29,4 +29,13 @@ typedef enum {
  */
 void send_error_response(ClientContext *ctx, int status_code);
 
+/**
+ * @brief key=value&key2=value2 형태의 문자열을 파싱하여 특정 키의 값을 찾습니다.
+ * @param body 원본 데이터 포인터
+ * @param key 찾고자 하는 키 이름 (예: "id")
+ * @param out_buf 값을 저장할 버퍼
+ * @return 찾으면 0, 못 찾으면 -1
+ */
+int http_get_form_param(const char *body, const char *key, char *out_buf, size_t out_len);
+
 #endif
