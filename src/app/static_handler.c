@@ -45,12 +45,13 @@ void handle_static_request(ClientContext* ctx) {
 }
 
 static HttpResult start_static_transfer(ClientContext *ctx) {
+    printf("[Static] Opening file: %s (Request: %s)\n", ctx->request_path, ctx->client_ip);
     // 파일 오픈
     int fd = open(ctx->request_path, O_RDONLY | O_CLOEXEC);
     if (fd < 0) {
         if (errno == ENOENT) return ERR_NOT_FOUND;
         if (errno == EACCES) return ERR_FORBIDDEN;
-        perror("static: open failed");
+        perror("[Static] File open failed");
         return ERR_INTERNAL_SERVER;
     }
 
@@ -61,13 +62,10 @@ static HttpResult start_static_transfer(ClientContext *ctx) {
         close(fd);
         return ERR_INTERNAL_SERVER;
     }
-//////////////////////////////////////////
-    // 디렉토리인 경우 거부 (보안) -> 추후 index.html 자동 매핑은 route_request에서 처리됨/////////////////
-    if (S_ISDIR(st.st_mode)) { /////////// 확인 필요
+    if (S_ISDIR(st.st_mode)) { 
         close(fd);
         return ERR_FORBIDDEN;
     }
-    //////////////////////////////////////////////////
 
     // Context 설정
     ctx->file_fd = fd;
@@ -147,18 +145,7 @@ static void send_static_body(ClientContext *ctx) {
             return;
         }
         else {
-            // 아직 덜 보냄 (대용량 파일 등) -> 계속 보낼 수 있으면 좋겠지만
-            // 워커 스레드 점유를 막기 위해 한 번 보내고 양보하거나,
-            // 여기서는 일단 루프 없이 리턴하여 다음 이벤트를 기다리거나 
-            // 또는 sendfile 특성상 한 번에 최대한 보냄. 
-            // 만약 여기서 리턴하면, Reactor가 다시 호출해주기 위해 EPOLLOUT 유지 필요?
-            // -> Level Trigger라면 계속 호출되겠지만, ONESHOT이므로 재장전 필요.
-            // -> 하지만 sent > 0 이면 소켓이 아직 열려있을 확률 높음. 
-            // -> 보통은 while 루프로 EAGAIN 뜰 때까지 보내는 게 정석이나, 
-            // -> 공평성을 위해 여기서는 재장전 후 리턴 (또는 reactor 구조상 바로 리턴하면 다시 wait로 감)
-            
-            // [수정 전략] 보내는데 성공했으면, 소켓 버퍼가 비었을 수 있으므로 
-            // 즉시 다시 EPOLLOUT을 걸어주어 곧바로 다시 호출되게 함.
+            // 아직 덜 보냄 
             if (reactor_update_event(ctx->epoll_fd, ctx->client_fd, 
                                      EPOLLOUT | EPOLLONESHOT, ctx) < 0) {
                 perror("stream: rearm epollout failed");
