@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include "app/http_handler.h"
 #include "app/stream_handler.h"
-#include "app/client_event_handler.h"
+#include "app/client_event_manager.h"
 #include "app/client_context.h"
 
 
