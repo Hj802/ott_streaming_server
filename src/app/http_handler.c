@@ -236,7 +236,11 @@ static void route_request(ClientContext *ctx) {
     }
     // [경로 매핑] 나머지 정적 파일들 
     // 앞의 '/'를 제거하고 'static/'을 붙임
-    else if (ctx->request_path[0] == '/') {
+    else if (strncmp(ctx->request_path, "/videos/", 8) == 0) {
+        // 이미 경로에 /videos/가 포함되어 있으므로 앞에 점(.)만 붙여서 현재 디렉토리로 인식시킴
+        snprintf(file_path, sizeof(file_path), ".%s", ctx->request_path);
+    }
+    else {
         // 확장자 추출
         const char *ext = strrchr(ctx->request_path, '.');
         

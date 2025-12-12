@@ -129,10 +129,10 @@ static int seed_initial_data() {
 
     printf("[DB] Seeding initial data...\n");
 
-    const char *vid1_phys = "./test.mp4";         // 실제 비디오 파일 위치
-    const char *thumb1_phys = "./static/thumb1.jpg"; // 썸네일이 저장될 실제 위치
+    const char *vid1_phys = "./videos/test.mp4";
+    const char *thumb1_phys = "./static/thumb1.jpg";
     
-    const char *vid2_phys = "./ironman.mp4";
+    const char *vid2_phys = "./videos/test2.mp4";
     const char *thumb2_phys = "./static/thumb2.jpg";
 
     generate_thumbnail_ffmpeg(vid1_phys, thumb1_phys);
@@ -142,8 +142,8 @@ static int seed_initial_data() {
     // 주의: filepath는 route_request 로직에 맞춰 '/test.mp4' 등으로 설정해야 함
     const char *sql_insert = 
         "INSERT INTO videos (title, filepath, thumbnail) VALUES "
-        "('Test Video (Auto Thumb)', '/test.mp4', '/thumb1.jpg'), "
-        "('Iron Man (Auto Thumb)', '/ironman.mp4', '/thumb2.jpg');";
+        "('Test Video', '/videos/test.mp4', '/thumb1.jpg'), "
+        "('Iron Man', '/videos/test2.mp4', '/thumb2.jpg');";
 
     char *err_msg = 0;
     rc = sqlite3_exec(g_db, sql_insert, 0, 0, &err_msg);
