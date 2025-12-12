@@ -10,6 +10,9 @@
 #include "app/db_handler.h"
 #include "app/http_utils.h"
 #include "app/client_context.h"
+#include "core/reactor.h"
+
+#define FFMPEG_CMD_TEMPLATE "ffmpeg -i \"%s\" -ss 00:00:05 -vframes 1 \"%s\" -y > /dev/null 2>&1"
 
 // 데이터베이스 연결 객체 (파일 내부 전역 변수)
 // 외부에서는 접근하지 못하도록 static으로 숨깁니다.
@@ -17,6 +20,7 @@ static sqlite3 *g_db = NULL;
 
 // 내부 헬퍼 함수
 static int seed_initial_data();
+static int generate_thumbnail_ffmpeg(const char *video_path, const char *out_thumb_path);
 
 int db_init(const char *db_path) {
     int rc = sqlite3_open(db_path, &g_db);
@@ -60,6 +64,22 @@ int db_init(const char *db_path) {
         return -1;
     }
 
+    const char *sql_history = 
+        "CREATE TABLE IF NOT EXISTS watch_history ("
+        "user_id INTEGER,"
+        "video_id INTEGER,"
+        "last_pos INTEGER DEFAULT 0,"
+        "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,"
+        "PRIMARY KEY (user_id, video_id)"
+        ");";
+    
+    if (sqlite3_exec(g_db, sql_history, 0, 0, 0) != SQLITE_OK) {
+        fprintf(stderr, "[DB] Create table failed: %s\n", err_msg);
+        sqlite3_free(err_msg);
+        sqlite3_close(g_db);
+        return -1;
+    }
+
     const char *sql_create_users = 
         "CREATE TABLE IF NOT EXISTS users ("
         "id INTEGER PRIMARY KEY AUTOINCREMENT, "
@@ -73,6 +93,8 @@ int db_init(const char *db_path) {
         sqlite3_close(g_db);
         return -1;
     }
+
+    sqlite3_exec(g_db, "INSERT OR IGNORE INTO users (username, password) VALUES ('user1', '1234');", 0, 0, 0);
 
     // 초기 데이터 주입
     seed_initial_data();
@@ -107,12 +129,21 @@ static int seed_initial_data() {
 
     printf("[DB] Seeding initial data...\n");
 
+    const char *vid1_phys = "./test.mp4";         // 실제 비디오 파일 위치
+    const char *thumb1_phys = "./static/thumb1.jpg"; // 썸네일이 저장될 실제 위치
+    
+    const char *vid2_phys = "./ironman.mp4";
+    const char *thumb2_phys = "./static/thumb2.jpg";
+
+    generate_thumbnail_ffmpeg(vid1_phys, thumb1_phys);
+    generate_thumbnail_ffmpeg(vid2_phys, thumb2_phys);
+
     // B. 더미 데이터 삽입
     // 주의: filepath는 route_request 로직에 맞춰 '/test.mp4' 등으로 설정해야 함
     const char *sql_insert = 
         "INSERT INTO videos (title, filepath, thumbnail) VALUES "
-        "('Test Video (Local)', '/test.mp4', '/static/thumb1.jpg'), "
-        "('Iron Man Trailer', '/ironman.mp4', '/static/thumb2.jpg');";
+        "('Test Video (Auto Thumb)', '/test.mp4', '/thumb1.jpg'), "
+        "('Iron Man (Auto Thumb)', '/ironman.mp4', '/thumb2.jpg');";
 
     char *err_msg = 0;
     rc = sqlite3_exec(g_db, sql_insert, 0, 0, &err_msg);
@@ -128,53 +159,22 @@ static int seed_initial_data() {
 }
 
 void handle_api_video_list(ClientContext *ctx) {
-    if (!g_db) { send_error_response(ctx, 500); return; }
-
-    sqlite3_stmt *stmt;
-    const char *sql = "SELECT id, title, filepath, thumbnail, duration FROM videos";
-
-    if (sqlite3_prepare_v2(g_db, sql, -1, &stmt, 0) != SQLITE_OK) {
-        send_error_response(ctx, 500);
-        return;
+    // 1. 세션에서 user_id 추출 (이미 http_handler에서 검증했으므로 있다고 가정)
+    // 만약 세션이 없으면 user_id = 0 (이력 없음)으로 처리
+    int user_id = 0;
+    if (strlen(ctx->session_id) > 0) {
+        user_id = session_get_user(ctx->session_id);
+        if (user_id < 0) user_id = 0;
     }
 
-    size_t json_cap = 16384; 
-    char *json_body = (char*)malloc(json_cap);
+    // 2. JSON 생성 (Join 쿼리 실행)
+    char *json_body = db_get_video_list_json(user_id);
     if (!json_body) {
-        sqlite3_finalize(stmt);
         send_error_response(ctx, 500);
         return;
     }
 
-    char *p = json_body;
-    size_t rem = json_cap;
-    int len = snprintf(p, rem, "[");
-    p += len; rem -= len;
-
-    int is_first = 1;
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
-        if (!is_first) { if (rem > 2) { *p++ = ','; rem--; } }
-        is_first = 0;
-
-        // (단순화) 컬럼 읽기
-        int id = sqlite3_column_int(stmt, 0);
-        const char *title = (const char*)sqlite3_column_text(stmt, 1);
-        const char *filepath = (const char*)sqlite3_column_text(stmt, 2);
-        const char *thumb = (const char*)sqlite3_column_text(stmt, 3);
-        int duration = sqlite3_column_int(stmt, 4);
-
-        // [주의] 여기서 title 등에 " 문자가 있으면 JSON 깨짐 (이스케이프 미구현)
-        len = snprintf(p, rem, 
-            "{\"id\":%d, \"title\":\"%s\", \"url\":\"%s\", \"thumbnail\":\"%s\", \"duration\":%d}",
-            id, title?title:"", filepath?filepath:"", thumb?thumb:"", duration);
-        
-        if (len < 0 || (size_t)len >= rem) break;
-        p += len; rem -= len;
-    }
-    if (rem > 2) { strcpy(p, "]"); }
-    sqlite3_finalize(stmt);
-
-    // 헤더 생성
+    // 3. 전송
     size_t body_len = strlen(json_body);
     int header_len = snprintf(ctx->buffer, sizeof(ctx->buffer),
         "HTTP/1.1 200 OK\r\n"
@@ -242,4 +242,119 @@ int db_verify_user(const char *username, const char *password) {
 
     sqlite3_finalize(stmt);
     return user_id;
+}
+
+// 시청 이력 저장 (Upsert)
+int db_update_history(int user_id, int video_id, int timestamp) {
+    if (!g_db) return -1;
+    
+    // SQLite의 INSERT OR REPLACE 문법 사용
+    const char *sql = "INSERT OR REPLACE INTO watch_history (user_id, video_id, last_pos, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP);";
+    
+    sqlite3_stmt *stmt;
+    if (sqlite3_prepare_v2(g_db, sql, -1, &stmt, 0) != SQLITE_OK) return -1;
+    
+    sqlite3_bind_int(stmt, 1, user_id);
+    sqlite3_bind_int(stmt, 2, video_id);
+    sqlite3_bind_int(stmt, 3, timestamp);
+    
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    
+    return (rc == SQLITE_DONE) ? 0 : -1;
+}
+
+// 비디오 목록 + 시청 이력 조회 (기존 handle_api_video_list 대체용 헬퍼)
+char* db_get_video_list_json(int user_id) {
+    if (!g_db) return NULL;
+
+    // LEFT JOIN을 사용하여 시청 기록이 없으면 last_pos가 NULL(0 처리)이 되게 함
+    const char *sql = 
+        "SELECT v.id, v.title, v.filepath, v.thumbnail, v.duration, "
+        "COALESCE(h.last_pos, 0) as last_pos "
+        "FROM videos v "
+        "LEFT JOIN watch_history h ON v.id = h.video_id AND h.user_id = ? "
+        "ORDER BY v.id ASC;";
+
+    sqlite3_stmt *stmt;
+    if (sqlite3_prepare_v2(g_db, sql, -1, &stmt, 0) != SQLITE_OK) return NULL;
+    
+    sqlite3_bind_int(stmt, 1, user_id);
+
+    // JSON 버퍼 (충분히 크게 잡음)
+    size_t cap = 16384;
+    char *json = (char*)malloc(cap);
+    if (!json) { sqlite3_finalize(stmt); return NULL; }
+    
+    char *p = json;
+    size_t rem = cap;
+    int len = snprintf(p, rem, "[");
+    p += len; rem -= len;
+
+    int is_first = 1;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        if (!is_first) { if (rem > 2) { *p++ = ','; rem--; } }
+        is_first = 0;
+
+        int id = sqlite3_column_int(stmt, 0);
+        const char *title = (const char*)sqlite3_column_text(stmt, 1);
+        const char *path = (const char*)sqlite3_column_text(stmt, 2);
+        const char *thumb = (const char*)sqlite3_column_text(stmt, 3);
+        int duration = sqlite3_column_int(stmt, 4);
+        int last_pos = sqlite3_column_int(stmt, 5); // [핵심] 이어보기 위치
+
+        len = snprintf(p, rem, 
+            "{\"id\":%d, \"title\":\"%s\", \"url\":\"%s\", \"thumbnail\":\"%s\", \"duration\":%d, \"last_pos\":%d}",
+            id, title?title:"", path?path:"", thumb?thumb:"", duration, last_pos);
+        
+        if (len < 0 || (size_t)len >= rem) break;
+        p += len; rem -= len;
+    }
+    if (rem > 2) strcpy(p, "]");
+    
+    sqlite3_finalize(stmt);
+    return json;
+}
+
+int db_create_user(const char *username, const char *password) {
+    if (!g_db) return -2;
+
+    sqlite3_stmt *stmt;
+    const char *sql = "INSERT INTO users (username, password) VALUES (?, ?);";
+
+    if (sqlite3_prepare_v2(g_db, sql, -1, &stmt, 0) != SQLITE_OK) {
+        return -2;
+    }
+
+    sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, password, -1, SQLITE_STATIC);
+
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+
+    if (rc == SQLITE_DONE) return 0; // 성공
+    if (rc == SQLITE_CONSTRAINT) return -1; // 아이디 중복 (UNIQUE 제약조건)
+    
+    return -2; // 기타 에러
+}
+
+static int generate_thumbnail_ffmpeg(const char *video_path, const char *out_thumb_path) {
+    char command[512];
+    
+    // 명령어 조합
+    snprintf(command, sizeof(command), FFMPEG_CMD_TEMPLATE, video_path, out_thumb_path);
+    
+    printf("[FFmpeg] Executing: %s\n", command);
+    
+    // 외부 명령어 실행 (Blocking)
+    int ret = system(command);
+    
+    if (ret == 0) {
+        printf("[FFmpeg] Thumbnail generated successfully: %s\n", out_thumb_path);
+        return 0;
+    } else {
+        fprintf(stderr, "[FFmpeg] Failed to generate thumbnail (code: %d)\n", ret);
+        // 썸네일 생성 실패가 서버 죽을 일은 아니므로 에러 로그만 남김
+        return -1;
+    }
 }

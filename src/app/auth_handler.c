@@ -111,17 +111,8 @@ void handle_logout(ClientContext *ctx) {
 }
 
 void handle_register(ClientContext *ctx) {
-    printf("[Debug AUTH] ctx addr: %p, body_ptr offset: %ld, size: %lu\n", 
-       ctx, (long)((char*)&ctx->body_ptr - (char*)ctx), sizeof(ClientContext));
     // 1. 바디 파싱 (로그인과 동일 로직)
     char *body = ctx->body_ptr;
-
-    if (body) {
-        printf("[Debug] Register Body: '%s'\n", body);
-    } else {
-        printf("[Debug] Register Body is NULL!\n");
-    }
-
     if (!body) {
         send_error_response(ctx, 400);
         return;

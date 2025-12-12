@@ -36,4 +36,22 @@ int db_verify_user(const char *username, const char *password);
  */
 void db_cleanup();
 
+/**
+ * @brief 시청 이력을 저장하거나 업데이트합니다.
+ * @param user_id 사용자 ID
+ * @param video_id 비디오 ID
+ * @param timestamp 시청 위치 (초 단위)
+ */
+int db_update_history(int user_id, int video_id, int timestamp);
+
+/**
+ * @brief 로그인한 유저의 시청 기록이 포함된 비디오 목록 JSON을 반환합니다.
+ * @param user_id 로그인한 사용자 ID
+ * @return JSON 문자열 (반드시 free 해야 함)
+ */
+char* db_get_video_list_json(int user_id);
+
+// 회원가입: 성공 시 0, 중복 아이디면 -1, DB 에러 -2
+int db_create_user(const char *username, const char *password);
+
 #endif
