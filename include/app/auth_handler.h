@@ -21,4 +21,7 @@ void handle_login(ClientContext *ctx);
  * * @param ctx 클라이언트 컨텍스트
  */
 void handle_logout(ClientContext *ctx);
+
+
+void handle_register(ClientContext *ctx);
 #endif
