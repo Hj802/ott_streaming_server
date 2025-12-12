@@ -16,7 +16,7 @@
 static HttpResult start_streaming(ClientContext *ctx);
 static void continue_sending_header(ClientContext *ctx);
 static void continue_sending_file(ClientContext *ctx);
-#define MAX_SEND_CHUNK_SIZE (2 * 1024 * 1024)
+#define MAX_SEND_CHUNK_SIZE (8 * 1024 * 1024)
 
 void handle_streaming_request(ClientContext *ctx){
     if (ctx->state == STATE_REQ_RECEIVING || ctx->state == STATE_PROCESSING) {
@@ -122,6 +122,7 @@ static HttpResult start_streaming(ClientContext *ctx) {
 }
 
 static void continue_sending_header(ClientContext *ctx) {
+    ctx->last_active = time(NULL);
     int to_send = ctx->buffer_len - ctx->buffer_sent;
 
     if (to_send <= 0) {
@@ -209,14 +210,19 @@ static void continue_sending_file(ClientContext *ctx) {
                 // [진짜 대기] 소켓 버퍼 꽉 참 -> Epoll 대기
                 if (reactor_update_event(ctx->epoll_fd, ctx->client_fd, 
                                          EPOLLOUT | EPOLLONESHOT, ctx) < 0) {
-                    perror("stream: rearm failed (EAGAIN)");
                     close(ctx->file_fd);
                     close(ctx->client_fd);
                     free(ctx);
                 }
                 return;
-            }
+            } else if (errno == EPIPE || errno == ECONNRESET) {
+            printf("[Stream] Client closed connection (Normal for probing)\n");
             
+            close(ctx->file_fd);
+            close(ctx->client_fd);
+            free(ctx);
+            return; // 조용히 종료
+            }
             // [에러]
             perror("stream: sendfile error");
             send_error_response(ctx, 500);
