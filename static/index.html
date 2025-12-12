@@ -3,456 +3,336 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OTT Streaming Server</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <title>SWM OTT Server</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        /* [테마] 다크 모드 (Netflix Style) */
+        :root {
+            --primary-red: #e50914;
+            --bg-black: #141414;
+            --card-bg: #2f2f2f;
         }
-
         body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 50%, #f0f4f8 100%);
-            background-attachment: fixed;
-            color: #1a1a1a;
-            min-height: 100vh;
-            line-height: 1.6;
+            font-family: 'Segoe UI', sans-serif;
+            background-color: var(--bg-black);
+            color: #fff;
+            margin: 0; padding: 0;
+            overflow-x: hidden;
         }
 
+        /* [Header] */
         header {
-            background: linear-gradient(180deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.9) 100%);
-            backdrop-filter: blur(10px);
-            padding: 20px 50px;
+            background-color: #000;
+            padding: 15px 40px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            border-bottom: 1px solid rgba(0,0,0,0.08);
+            position: sticky; top: 0; z-index: 100;
+        }
+        .logo { color: var(--primary-red); font-size: 28px; font-weight: bold; text-decoration: none; }
+        .auth-btn {
+            background-color: var(--primary-red);
+            color: white; border: none;
+            padding: 8px 16px; border-radius: 4px;
+            cursor: pointer; font-weight: bold;
         }
 
-        .logo {
-            color: #e50914;
-            font-size: 28px;
-            font-weight: 700;
-            text-decoration: none;
-            letter-spacing: -0.5px;
-            background: linear-gradient(135deg, #e50914 0%, #f40612 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            transition: transform 0.3s ease;
-        }
-
-        .logo:hover {
-            transform: scale(1.05);
-        }
-
-        .login-btn {
-            background: rgba(229, 9, 20, 0.1);
-            border: 1px solid rgba(229, 9, 20, 0.3);
-            color: #e50914;
-            padding: 10px 24px;
-            cursor: pointer;
-            border-radius: 6px;
-            font-size: 14px;
-            font-weight: 500;
-            transition: all 0.3s ease;
-            backdrop-filter: blur(10px);
-        }
-
-        .login-btn:hover {
-            background: rgba(229, 9, 20, 0.15);
-            border-color: rgba(229, 9, 20, 0.5);
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(229, 9, 20, 0.2);
-        }
-
-        .container {
-            padding: 50px 40px;
-            max-width: 1400px;
-            margin: 0 auto;
-        }
-
-        h2 {
-            font-size: 32px;
-            font-weight: 700;
-            margin-bottom: 30px;
-            background: linear-gradient(135deg, #1a1a1a 0%, #4a4a4a 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            letter-spacing: -0.5px;
-        }
-
-        /* 로딩 스피너 */
-        .loading-spinner {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 60px 0;
-        }
-
-        .spinner {
-            width: 50px;
-            height: 50px;
-            border: 4px solid rgba(229, 9, 20, 0.2);
-            border-top-color: #e50914;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        /* 비디오 목록 그리드 */
-        #video-list {
+        /* [Main Content] */
+        .container { padding: 40px; max-width: 1200px; margin: 0 auto; display: none; /* 기본 숨김 */ }
+        
+        #video-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-            gap: 24px;
-            margin-top: 20px;
+            gap: 20px; margin-top: 20px;
         }
-
         .video-card {
-            background: linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.9) 100%);
-            border-radius: 12px;
-            overflow: hidden;
-            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-            cursor: pointer;
+            background-color: var(--card-bg);
+            border-radius: 6px; overflow: hidden;
+            transition: transform 0.3s; cursor: pointer;
             position: relative;
-            border: 1px solid rgba(0,0,0,0.08);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+        .video-card:hover { transform: scale(1.05); z-index: 10; }
+        
+        .thumbnail { 
+            width: 100%; height: 130px; 
+            background-color: #333; object-fit: cover; display: block; 
         }
 
-        .video-card:hover {
-            transform: translateY(-8px) scale(1.02);
-            box-shadow: 0 12px 32px rgba(229, 9, 20, 0.25);
-            border-color: rgba(229, 9, 20, 0.4);
+        /* 이어보기 진행률 바 (선택 사항 UI) */
+        .progress-bar {
+            height: 3px; background: #555; width: 100%;
+            position: absolute; bottom: 60px; /* info 위쪽 */
+        }
+        .progress-fill {
+            height: 100%; background: var(--primary-red); width: 0%;
         }
 
-        .thumbnail-container {
-            position: relative;
-            width: 100%;
-            height: 300px;
-            overflow: hidden;
-            background: linear-gradient(135deg, #e0e0e0 0%, #d0d0d0 100%);
+        .info { padding: 12px; }
+        .title { font-weight: bold; margin-bottom: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        /* [Login Modal] */
+        #login-modal {
+            position: fixed; top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: flex; justify-content: center; align-items: center;
+            z-index: 1000;
+        }
+        .login-box {
+            background: rgba(0,0,0,0.85);
+            padding: 60px 68px 40px;
+            border-radius: 4px;
+            width: 100%; max-width: 320px;
+            text-align: center;
+        }
+        .login-input {
+            width: 100%; padding: 16px; margin-bottom: 16px;
+            border-radius: 4px; border: none; background: #333; color: white;
+            box-sizing: border-box;
+        }
+        .login-submit {
+            width: 100%; padding: 16px;
+            border-radius: 4px; border: none;
+            background: var(--primary-red); color: white;
+            font-weight: bold; cursor: pointer; margin-top: 10px;
         }
 
-        .thumbnail {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            transition: transform 0.4s ease;
-        }
-
-        .video-card:hover .thumbnail {
-            transform: scale(1.1);
-        }
-
-        .play-overlay {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 60px;
-            height: 60px;
-            background: rgba(229, 9, 20, 0.9);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            opacity: 0;
-            transition: all 0.3s ease;
-            backdrop-filter: blur(10px);
-        }
-
-        .video-card:hover .play-overlay {
-            opacity: 1;
-        }
-
-        .play-icon {
-            width: 0;
-            height: 0;
-            border-left: 18px solid white;
-            border-top: 12px solid transparent;
-            border-bottom: 12px solid transparent;
-            margin-left: 4px;
-        }
-
-        .info {
-            padding: 16px;
-        }
-
-        .title {
-            font-size: 16px;
-            font-weight: 600;
-            margin-bottom: 6px;
-            color: #1a1a1a;
-            line-height: 1.4;
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-        }
-
-        .duration {
-            font-size: 13px;
-            color: #666;
-            font-weight: 400;
-        }
-
-        /* 비디오 플레이어 모달 */
+        /* [Player Modal] */
         #player-overlay {
             display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(255,255,255,0.95);
-            backdrop-filter: blur(10px);
-            z-index: 1000;
-            justify-content: center;
-            align-items: center;
-            flex-direction: column;
-            opacity: 0;
-            transition: opacity 0.3s ease;
+            position: fixed; top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: black; z-index: 2000;
+            justify-content: center; align-items: center; flex-direction: column;
         }
-
-        #player-overlay.show {
-            opacity: 1;
-        }
-
-        .player-container {
-            position: relative;
-            width: 90%;
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-
-        video {
-            width: 100%;
-            max-width: 1200px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            border-radius: 12px;
-            background: #000;
-        }
-
-        .close-btn {
-            margin-top: 24px;
-            padding: 12px 32px;
-            background: linear-gradient(135deg, #e50914 0%, #f40612 100%);
-            color: white;
-            border: none;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            border-radius: 8px;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 12px rgba(229, 9, 20, 0.3);
-        }
-
-        .close-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(229, 9, 20, 0.5);
-        }
-
-        .close-btn:active {
-            transform: translateY(0);
-        }
-
-        /* 에러 메시지 */
-        .error-message {
-            color: #d32f2f;
-            text-align: center;
-            padding: 40px;
-            font-size: 16px;
-            background: rgba(255, 68, 68, 0.1);
-            border-radius: 8px;
-            border: 1px solid rgba(255, 68, 68, 0.3);
-        }
-
-        .empty-message {
-            color: #666;
-            text-align: center;
-            padding: 60px 20px;
-            font-size: 18px;
-        }
-
-        /* 반응형 디자인 */
-        @media (max-width: 768px) {
-            header {
-                padding: 15px 20px;
-            }
-
-            .logo {
-                font-size: 24px;
-            }
-
-            .container {
-                padding: 30px 20px;
-            }
-
-            h2 {
-                font-size: 24px;
-            }
-
-            #video-list {
-                grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-                gap: 16px;
-            }
-
-            .thumbnail-container {
-                height: 220px;
-            }
+        video { width: 90%; max-width: 1000px; outline: none; }
+        .close-player {
+            position: absolute; top: 20px; right: 30px;
+            color: white; font-size: 40px; cursor: pointer;
         }
     </style>
 </head>
 <body>
 
     <header>
-        <a href="#" class="logo">OTT Streaming</a>
-        <div id="auth-section">
-            <button class="login-btn">Login</button>
-        </div>
+        <a href="#" class="logo">SWM OTT</a>
+        <button id="logout-btn" class="auth-btn" style="display:none" onclick="handleLogout()">Logout</button>
     </header>
 
-    <div class="container">
-        <h2>🔥 Trending Now</h2>
-        <div id="video-list">
-            <div class="loading-spinner">
-                <div class="spinner"></div>
-            </div>
+    <div id="login-modal">
+        <div class="login-box">
+            <h2 style="margin-bottom:30px">Sign In</h2>
+            <form onsubmit="handleAuth(event)">
+                <input type="text" id="username" class="login-input" placeholder="Username" required>
+                <input type="password" id="password" class="login-input" placeholder="Password" required>
+                <div style="display:flex; gap:10px;">
+                    <button type="submit" class="login-submit" onclick="setMode('login')">Sign In</button>
+                    <button type="submit" class="login-submit" onclick="setMode('register')" style="background-color:#444;">Sign Up</button>
+                </div>
+            </form>
+            <p id="login-error" style="color: #e87c03; display: none; margin-top: 15px; font-size: 14px;"></p>
         </div>
+    </div>
+
+    <div id="main-content" class="container">
+        <h2>🔥 Trending Now</h2>
+        <div id="video-grid"></div>
     </div>
 
     <div id="player-overlay">
-        <div class="player-container">
-            <video id="main-player" controls>
-                <source src="" type="video/mp4">
-                Your browser does not support the video tag.
-            </video>
-            <button class="close-btn" onclick="closePlayer()">Close Player</button>
-        </div>
+        <div class="close-player" onclick="closePlayer()">&times;</div>
+        <video id="main-player" controls>
+            <source src="" type="video/mp4">
+        </video>
     </div>
 
     <script>
-        // [1] 페이지 로드 시 실행
+        const API_VIDEOS = '/api/videos';
+        const API_LOGIN = '/login';
+        const API_LOGOUT = '/logout';
+        const API_REGISTER = '/register';
+        const API_HISTORY = '/api/history'; // [추가]
+
+        let authMode = 'login';
+        
+        // [이어보기 관련 변수]
+        let currentVideoId = null;
+        let historyTimer = null;
+
+        function setMode(mode) { authMode = mode; }
+
         document.addEventListener('DOMContentLoaded', () => {
-            fetchVideos();
+            checkLoginState();
         });
 
-        // [2] API 호출 및 목록 렌더링
-        async function fetchVideos() {
+        async function checkLoginState() {
             try {
-                const response = await fetch('/api/videos');
-                
-                if (!response.ok) {
-                    throw new Error(`Server Error: ${response.status}`);
+                const response = await fetch(API_VIDEOS);
+                if (response.status === 200) {
+                    const videos = await response.json();
+                    showApp(videos);
+                } else if (response.status === 401 || response.status === 403) {
+                    showLogin();
                 }
+            } catch (e) { console.error(e); }
+        }
 
-                const videos = await response.json();
-                renderVideoList(videos);
+        function showLogin() {
+            document.getElementById('login-modal').style.display = 'flex';
+            document.getElementById('main-content').style.display = 'none';
+            document.getElementById('logout-btn').style.display = 'none';
+        }
 
-            } catch (error) {
-                console.error('Fetch failed:', error);
-                const container = document.getElementById('video-list');
-                container.innerHTML = '<div class="error-message">❌ Failed to load videos. Please check if the server is running.</div>';
+        function showApp(videos) {
+            document.getElementById('login-modal').style.display = 'none';
+            document.getElementById('main-content').style.display = 'block';
+            document.getElementById('logout-btn').style.display = 'block';
+            renderVideos(videos);
+        }
+
+        async function handleAuth(e) {
+            e.preventDefault();
+            const user = document.getElementById('username').value;
+            const pass = document.getElementById('password').value;
+            const errorMsg = document.getElementById('login-error');
+            const endpoint = (authMode === 'login') ? API_LOGIN : API_REGISTER;
+
+            try {
+                const bodyData = `username=${user}&password=${pass}`;
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: bodyData
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    if (authMode === 'register') {
+                        alert("Sign Up Successful! Please Log In.");
+                    } else {
+                        errorMsg.style.display = 'none';
+                        checkLoginState(); 
+                    }
+                } else {
+                    errorMsg.innerText = result.message || "Operation Failed";
+                    errorMsg.style.display = 'block';
+                }
+            } catch (err) {
+                console.error(err);
+                errorMsg.innerText = "Connection Error";
+                errorMsg.style.display = 'block';
             }
         }
 
-        // [3] DOM 생성
-        function renderVideoList(videos) {
-            const container = document.getElementById('video-list');
-            container.innerHTML = '';
+        async function handleLogout() {
+            await fetch(API_LOGOUT, { method: 'POST' });
+            location.reload(); 
+        }
 
-            if (videos.length === 0) {
-                container.innerHTML = '<div class="empty-message">📺 No videos available at the moment.</div>';
-                return;
-            }
-
-            videos.forEach((video, index) => {
+        function renderVideos(videos) {
+            const grid = document.getElementById('video-grid');
+            grid.innerHTML = '';
+            
+            videos.forEach(v => {
                 const card = document.createElement('div');
                 card.className = 'video-card';
-                card.style.animationDelay = `${index * 0.05}s`;
                 
-                // 썸네일 없으면 기본 색상 박스
-                const thumbSrc = video.thumbnail ? video.thumbnail : '';
+                // [수정] openPlayer에 ID와 last_pos를 전달
+                // v.last_pos가 없으면 0으로 처리
+                const lastPos = v.last_pos || 0;
+                card.onclick = () => openPlayer(v.url, v.id, lastPos);
                 
+                const thumbSrc = v.thumbnail ? v.thumbnail : '';
+                
+                // [UI] 시청 바 표시 (선택사항)
+                let progressHtml = '';
+                if (v.duration > 0 && lastPos > 0) {
+                    const pct = Math.min((lastPos / v.duration) * 100, 100);
+                    progressHtml = `<div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>`;
+                }
+
                 card.innerHTML = `
-                    <div class="thumbnail-container">
-                        <img class="thumbnail" src="${thumbSrc}" alt="${video.title}" 
-                             onerror="this.style.display='none'; this.parentElement.style.background='linear-gradient(135deg, #e0e0e0 0%, #d0d0d0 100%)'">
-                        <div class="play-overlay">
-                            <div class="play-icon"></div>
+                    <img class="thumbnail" src="${thumbSrc}" onerror="this.style.display='none'">
+                    ${progressHtml}
+                    <div class="info">
+                        <div class="title">${v.title}</div>
+                        <div style="font-size:12px; color:#aaa">
+                            ${lastPos > 0 ? 'Resuming at ' + formatTime(lastPos) : 'Duration: ' + v.duration + 's'}
                         </div>
                     </div>
-                    <div class="info">
-                        <div class="title">${escapeHtml(video.title)}</div>
-                        <div class="duration">ID: ${video.id}</div>
-                    </div>
                 `;
-
-                // 클릭 시 재생 함수 호출
-                card.onclick = () => openPlayer(video.url);
-                
-                container.appendChild(card);
+                grid.appendChild(card);
             });
         }
 
-        // [4] HTML 이스케이프 함수
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
+        const playerModal = document.getElementById('player-overlay');
+        const videoEl = document.getElementById('main-player');
 
-        // [5] 플레이어 제어
-        const overlay = document.getElementById('player-overlay');
-        const player = document.getElementById('main-player');
-
-        function openPlayer(url) {
-            player.src = url;
-            overlay.style.display = 'flex';
-            // 애니메이션을 위한 약간의 지연
-            setTimeout(() => {
-                overlay.classList.add('show');
-            }, 10);
-            player.play().catch(e => console.log('Autoplay blocked:', e));
+        // [핵심] 이어보기 및 기록 저장 로직
+        function openPlayer(url, videoId, startTime) {
+            currentVideoId = videoId;
+            videoEl.src = url;
             
-            // ESC 키로 닫기
-            document.addEventListener('keydown', handleEscapeKey);
+            // 1. 이어보기 위치 설정
+            // 메타데이터가 로드된 후 시간을 설정해야 안전함
+            videoEl.onloadedmetadata = () => {
+                if (startTime > 0) {
+                    videoEl.currentTime = startTime;
+                    console.log(`Resuming video ${videoId} at ${startTime}s`);
+                }
+                videoEl.play().catch(e => console.log('Autoplay blocked'));
+            };
+
+            playerModal.style.display = 'flex';
+
+            // 2. 5초마다 시청 기록 전송 (Heartbeat)
+            if (historyTimer) clearInterval(historyTimer);
+            historyTimer = setInterval(sendHistory, 5000); 
         }
 
         function closePlayer() {
-            overlay.classList.remove('show');
-            setTimeout(() => {
-                player.pause();
-                player.src = "";
-                overlay.style.display = 'none';
-            }, 300);
-            document.removeEventListener('keydown', handleEscapeKey);
+            videoEl.pause();
+            videoEl.src = "";
+            playerModal.style.display = 'none';
+            
+            // 타이머 정리
+            if (historyTimer) clearInterval(historyTimer);
+            historyTimer = null;
+            
+            // 닫을 때 마지막으로 한 번 더 저장 (선택 사항)
+            sendHistory();
+            currentVideoId = null;
+
+            // 목록을 갱신해서 진행률 바 업데이트
+            checkLoginState();
         }
 
-        function handleEscapeKey(e) {
-            if (e.key === 'Escape') {
-                closePlayer();
+        // 서버로 위치 전송
+        async function sendHistory() {
+            if (!currentVideoId || videoEl.paused || videoEl.ended) return;
+
+            const currentTime = Math.floor(videoEl.currentTime);
+            // 0초거나 너무 짧으면 패스 (선택 사항)
+            if (currentTime < 1) return;
+
+            try {
+                const bodyData = `video_id=${currentVideoId}&timestamp=${currentTime}`;
+                await fetch(API_HISTORY, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: bodyData
+                });
+                // console.log(`Saved history: ${currentTime}s`);
+            } catch (e) {
+                console.error("Failed to save history", e);
             }
         }
 
-        // 오버레이 배경 클릭 시 닫기
-        overlay.addEventListener('click', (e) => {
-            if (e.target === overlay) {
-                closePlayer();
-            }
-        });
+        // 시간 포맷팅 헬퍼 (초 -> 00:00)
+        function formatTime(seconds) {
+            const m = Math.floor(seconds / 60);
+            const s = Math.floor(seconds % 60);
+            return `${m}:${s < 10 ? '0'+s : s}`;
+        }
     </script>
 </body>
 </html>
