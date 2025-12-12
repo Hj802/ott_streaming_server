@@ -22,7 +22,16 @@ THIRD_PARTY_DIR := third_party
 # =========================================================================
 # III. 소스 및 의존성 파일 자동 탐색
 # =========================================================================
-SRCS := $(shell find $(SRC_DIR) -name '*.c')
+# 1. 모든 .c 파일 검색
+ALL_SRCS := $(shell find $(SRC_DIR) -name '*.c')
+
+# 2. 제외할 파일 목록 (패턴 또는 구체적인 경로)
+# 예: src/test_main.c 와 src/core/test_pool.c 제외
+EXCLUDE_SRCS := %_test.c  # (선택) "_test.c"로 끝나는 모든 파일 제외 패턴
+
+# 3. 전체 목록에서 제외 목록을 뺌
+SRCS := $(filter-out $(EXCLUDE_SRCS), $(ALL_SRCS))
+
 OBJS := $(patsubst $(SRC_DIR)/%.c, $(OBJ_DIR)/%.o, $(SRCS))
 
 # [추가] .o 파일에 대응하는 .d (의존성) 파일 목록 생성
