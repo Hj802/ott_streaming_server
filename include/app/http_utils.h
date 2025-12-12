@@ -7,7 +7,8 @@ typedef enum {
     // 에러 코드 (음수)
 
     // 4XX: 클라이언트 오류
-    ERR_BAD_REQUEST = -400,       
+    ERR_BAD_REQUEST = -400,
+    ERR_UNAUTHORIZED = -401,       
     ERR_FORBIDDEN = -403,             
     ERR_NOT_FOUND = -404,              
     ERR_RANGE_NOT_SATISFIABLE = -416,  

@@ -11,6 +11,7 @@
 static const char* get_status_text(int code) {
     switch (code) {
         case ERR_BAD_REQUEST:           return "Bad Request";
+        case ERR_UNAUTHORIZED:          return "Unauthorized";
         case ERR_FORBIDDEN:             return "Forbidden";
         case ERR_NOT_FOUND:             return "Not Found";
         case ERR_RANGE_NOT_SATISFIABLE: return "Range Not Satisfiable";
