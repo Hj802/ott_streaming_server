@@ -32,6 +32,8 @@ typedef struct ClientContext{
 
     ClientState state;
 
+    char *body_ptr;
+
     Method method;
     char request_path[512];
 
