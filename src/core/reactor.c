@@ -1,4 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
+#define _GNU_SOURCE
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -10,11 +11,12 @@
 #include <sys/epoll.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <fcntl.h>
 #include "core/reactor.h"
 #include "core/thread_pool.h"
 #include "core/config_loader.h"
-#include "app/client_event_handler.h"
+#include "app/client_event_manager.h"
 #include "app/client_context.h"
 
 #define MAX_EVENTS 1024
@@ -162,6 +164,7 @@ void reactor_run(Reactor* reactor){
                 
                 // Context 초기화
                 memset(ctx, 0, sizeof(ClientContext)); // 0으로 밀어서 쓰레기값 방지
+                ctx->epoll_fd = reactor->epoll_fd;
                 ctx->client_fd = client_fd;
                 ctx->last_active = time(NULL);
                 ctx->state = STATE_REQ_RECEIVING;
@@ -185,10 +188,6 @@ void reactor_run(Reactor* reactor){
             else if (events[i].data.fd != reactor->listen_fd) { 
                 ClientContext *ctx = (ClientContext*)events[i].data.ptr;
 
-                // 이미 처리 중이면 continue (Race Condition 방지)
-                if(ctx->state == STATE_PROCESSING) continue;
-                
-                ctx->state = STATE_PROCESSING;
                 ctx->last_active = time(NULL); // 활동 시간 갱신
 
                 thread_pool_submit(reactor->pool, handle_client_event, ctx);

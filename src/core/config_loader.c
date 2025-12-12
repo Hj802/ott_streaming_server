@@ -23,12 +23,12 @@ typedef struct {
 static ConfigMapping config_map[] = {
     {"PORT",                TYPE_INT,   offsetof(ServerConfig, port),       0},
     {"MAX_CLIENTS",         TYPE_INT,   offsetof(ServerConfig, max_clients),   0},
-    {"TIMEOUT_SEC",         TYPE_INT,   offsetof(ServerConfig, timeout_sec),   0},
+    {"TIMEOUT",             TYPE_INT,   offsetof(ServerConfig, timeout_sec),   0},
     {"LOG_LEVEL",           TYPE_INT,   offsetof(ServerConfig, log_level),     0},
     {"QUEUE_CAPACITY",      TYPE_INT,   offsetof(ServerConfig, queue_capacity), 0},
     {"WORKER_THREAD_COUNT", TYPE_INT,   offsetof(ServerConfig, thread_num), 0},
     {"HOST",                TYPE_STRING,offsetof(ServerConfig, server_host),   MAX_HOST_LEN},
-    {NULL, 0, 0} // 배열의 끝
+    {NULL, 0, 0, 0} // 배열의 끝
 };
 
 static char* trim_whitespace(char *str) {

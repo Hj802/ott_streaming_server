@@ -3,7 +3,7 @@
 
 #include <stdbool.h>
 
-typedef struct Threadpool ThreadPool;
+typedef struct ThreadPool ThreadPool;
 typedef struct ServerConfig ServerConfig;
 
 typedef struct {

@@ -4,7 +4,7 @@
 #include <pthread.h>
 
 // 구조체 정의
-typedef struct {
+typedef struct ThreadPool{
     TaskQueue queue;        // 임베딩 구조체
     pthread_t* threads;     // 일꾼 스레드들의 ID 배열 (동적 할당 예정)
     int num_threads;        // 스레드 개수

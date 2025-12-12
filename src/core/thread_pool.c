@@ -1,4 +1,4 @@
-#define _POSIX_C_SOURCE 200112L
+#define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -119,6 +119,6 @@ void thread_pool_cleanup(ThreadPool* pool){
         pool->threads = NULL; // [안전] 댕글링 포인터 방지
     }
 
-    // 2. 큐 내부 자원 해제
+    // 큐 내부 자원 해제
     task_queue_free(&pool->queue);
 }
