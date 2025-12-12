@@ -19,10 +19,11 @@ typedef enum {
     HTTP_UNKNOWN
 } Method;
 
-typedef struct {
+typedef struct ClientContext{
     int epoll_fd;
     int client_fd;                      // 클라이언트 소켓
     char client_ip[INET_ADDRSTRLEN];    // 클라이언트 ip
+    char session_id[33];                // 세션 ID 저장용 (NULL 포함 33바이트)
     time_t last_active;                 // Resource Leak 방지
 
     char buffer[4096];  // 송수신 버퍼 (재사용)
