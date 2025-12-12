@@ -12,12 +12,21 @@
 #include "app/http_utils.h"
 #include "app/client_context.h"
 #include "app/static_handler.h"
+#include "app/auth_handler.h"
+#include "app/session_manager.h"
+#include "app/db_handler.h"
 #include "core/reactor.h"
 
 static const enum {
     READ_BLOCK = -2,
     READ_ERR = -1,
     READ_EOF = 0
+};
+
+enum ParseResult {
+    PARSE_OK = 0,
+    PARSE_INCOMPLETE = -1, // 더 읽어야 함
+    PARSE_ERROR = -2       // 형식이 잘못됨 (400 Bad Request)
 };
 
 static int try_read_request (ClientContext *ctx);
@@ -29,12 +38,13 @@ void handle_http_request(ClientContext *ctx) {
     int read_status = try_read_request(ctx);
 
     if (read_status == READ_ERR) {
+        printf("Client error: %s\n", ctx->client_ip);
         close(ctx->client_fd);
         free(ctx);
         return;
     }
-    if (read_status == READ_BLOCK) {
-        printf("Client closed connection: %s\n", ctx->client_ip);
+    if (read_status == READ_EOF) {
+        printf("[Info] Client %d closed connection (EOF)\n", ctx->client_fd);
         close(ctx->client_fd);
         free(ctx);
         return;
@@ -45,9 +55,17 @@ void handle_http_request(ClientContext *ctx) {
         return;
     }
 
-    if (parse_request(ctx) < 0) {
-        // 헤더가 아직 완성 되지 않음: 대기
+
+    int parse_result = parse_request(ctx);
+
+    if (parse_result == PARSE_INCOMPLETE) {
+        // 헤더 미완성 -> 더 읽기 위해 대기
         rearm_epoll(ctx);
+        return;
+    }
+    else if (parse_result == PARSE_ERROR) {
+        // 형식 오류 -> 400 에러 보내고 즉시 종료
+        send_error_response(ctx, 400); 
         return;
     }
     route_request(ctx);
@@ -85,16 +103,17 @@ static int try_read_request(ClientContext *ctx) {
 static int parse_request(ClientContext *ctx) {
     // 헤더 끝 찾기
     char *header_end = strstr(ctx->buffer, "\r\n\r\n");
-    if (!header_end) return -1;
-    *header_end = '\0';
+    if (!header_end) return PARSE_INCOMPLETE;
+
     // 바디 시작점
-    // char *body_start = header_end + 4;
+    ctx->body_ptr = header_end + 4;
+    *header_end = '\0';
 
     // request 라인 파싱
     char *saveptr;
     char *line = strtok_r(ctx->buffer, "\r\n", &saveptr);
     
-    if(!line) return -1;
+    if(!line) return PARSE_ERROR;
 
     char method_str[16] = {0};
     char path_str[512] = {0};
@@ -102,7 +121,7 @@ static int parse_request(ClientContext *ctx) {
 
     if (sscanf(line, "%15s %511s %15s", method_str, path_str, proto_str) != 3) {
         fprintf(stderr, "Malformed HTTP Request\n");
-        return -1;
+        return PARSE_ERROR;
     }
 
     if (strcmp(method_str, "GET") == 0) ctx->method = HTTP_GET;
@@ -146,10 +165,26 @@ static int parse_request(ClientContext *ctx) {
             } // if "bytes="
         } // if "Range:"
 
-        // TODO: Cookie 헤더 파싱 추가 위치
-
+        // Cookie 헤더 파싱
+        if (strncasecmp(line, "Cookie:", 7) == 0) {
+            char *p = line + 7;
+            // "session_id=" 문자열 검색
+            char *sess_ptr = strstr(p, "session_id=");
+            if (sess_ptr) {
+                sess_ptr += 11; // "session_id=" 길이만큼 이동
+                
+                // 값 추출 (세미콜론, 줄바꿈, 공백 등을 만날 때까지)
+                int i = 0;
+                while (i < 32 && sess_ptr[i] != '\0' && sess_ptr[i] != ';' && 
+                       sess_ptr[i] != '\r' && sess_ptr[i] != '\n' && sess_ptr[i] != ' ') {
+                    ctx->session_id[i] = sess_ptr[i];
+                    i++;
+                }
+                ctx->session_id[i] = '\0';
+            }
+        }
     } // while (line 파싱)
-    return 0;
+    return PARSE_OK;
 }
 
 static void route_request(ClientContext *ctx) {
@@ -158,70 +193,92 @@ static void route_request(ClientContext *ctx) {
         send_error_response(ctx, ERR_FORBIDDEN);
         return;
     }
-
-    /* if (strcmp(ctx->request_path, "/") == 0) {
-        strncpy(ctx->request_path, "/index.html", sizeof(ctx->request_path) - 1);
-    } */
-    // [수정] 임시 경로 버퍼
-    char file_path[512] = {0};
-
-    // 2. [경로 매핑] 루트 경로("/") -> "static/index.html"
-    if (strcmp(ctx->request_path, "/") == 0) {
-        snprintf(file_path, sizeof(file_path), "static/index.html");
-    }
-    // 3. [경로 매핑] 나머지 정적 파일들 (예: /style.css -> static/style.css)
-    // 앞의 '/'를 제거하고 'static/'을 붙임
-    else if (ctx->request_path[0] == '/') {
-        // 확장자 확인
-        const char *ext = strrchr(ctx->request_path, '.');
-        if (ext && (strcmp(ext, ".html") == 0 || strcmp(ext, ".css") == 0 || 
-                    strcmp(ext, ".js") == 0 || strcmp(ext, ".png") == 0)) {
-            snprintf(file_path, sizeof(file_path), "static%s", ctx->request_path);
-        } else {
-             // mp4 등은 그대로 둠 (혹은 별도 폴더가 있다면 여기서 처리)
-             strncpy(file_path, ctx->request_path + 1, sizeof(file_path) - 1); 
-             // 주의: open() 할 때 절대 경로(/)를 피하기 위해 +1 사용 (상대 경로로 변환)
-        }
-    } else {
-        strncpy(file_path, ctx->request_path, sizeof(file_path) - 1);
-    }
-
-    // [중요] 변환된 파일 경로를 context에 다시 저장
-    strncpy(ctx->request_path, file_path, sizeof(ctx->request_path) - 1);
-
-
-
-
-
-
-
-    // 3. [API 처리] 로그인/로그아웃 등 로직 처리
+    // [API 처리] 로그인 처리
     if (strcmp(ctx->request_path, "/login") == 0 && ctx->method == HTTP_POST) {
-        // handle_login_request(ctx); // auth_handler.c 구현 필요
+        handle_login(ctx);
         return;
     }
 
-    // TODO: video_list
+    // [API 처리] 로그아웃 (POST /logout)
+    if (strcmp(ctx->request_path, "/logout") == 0 && ctx->method == HTTP_POST) {
+        handle_logout(ctx); // auth_handler.c
+        return;
+    }
 
-    // TODO: POST
+    // [API 처리] 회원가입 (POST /register)
+    if (strcmp(ctx->request_path, "/register") == 0 && ctx->method == HTTP_POST) {
+        handle_register(ctx);
+        return;
+    }
 
-    // TODO: OPTIONS
+    // [API 처리] 시청 이력 저장 (POST /api/history)
+    if (strcmp(ctx->request_path, "/api/history") == 0 && ctx->method == HTTP_POST) {
+        handle_api_history(ctx);
+        return;
+    }
     
-    // TODO: [접근 제어] 보호된 리소스(.mp4) 인증 확인
-    // (추후 Session Manager 구현 시 주석 해제)
-    /*
+
+    // [API 처리] 비디오 목록 (GET /api/videos)
+    if (strcmp(ctx->request_path, "/api/videos") == 0 && ctx->method == HTTP_GET) {
+        if (strlen(ctx->session_id) == 0 || session_get_user(ctx->session_id) < 0) {
+            send_error_response(ctx, 401); // Unauthorized 반환
+            return;
+        }
+        handle_api_video_list(ctx);
+        return;
+    }
+
+    char file_path[512] = {0};
+
+    // [경로 매핑] 루트 경로("/") -> "static/index.html"
+    if (strcmp(ctx->request_path, "/") == 0) {
+        snprintf(file_path, sizeof(file_path), "static/index.html");
+    }
+    // [경로 매핑] 나머지 정적 파일들 
+    // 앞의 '/'를 제거하고 'static/'을 붙임
+    else if (ctx->request_path[0] == '/') {
+        // 확장자 추출
+        const char *ext = strrchr(ctx->request_path, '.');
+        
+        // 정적 자원(Static)인지 확인
+        int is_static = 0;
+        if (ext && (strcasecmp(ext, ".html") == 0 || strcasecmp(ext, ".css") == 0 || 
+                    strcasecmp(ext, ".js") == 0   || strcasecmp(ext, ".png") == 0 || 
+                    strcasecmp(ext, ".jpg") == 0  || strcasecmp(ext, ".ico") == 0)) {
+            is_static = 1;
+        }
+
+        // 경로 조립
+        if (is_static) {
+            // 이미 /static/으로 시작하는지 확인 (중복 방지)
+            if (strncmp(ctx->request_path, "/static/", 8) == 0) {
+                 snprintf(file_path, sizeof(file_path), ".%s", ctx->request_path); // ./static/...
+            } else {
+                 snprintf(file_path, sizeof(file_path), "static%s", ctx->request_path);
+            }
+        } else {
+            // MP4 등 미디어 파일은 루트(혹은 media 폴더)에서 찾음
+            // 예: /test.mp4 -> ./test.mp4
+            snprintf(file_path, sizeof(file_path), ".%s", ctx->request_path);
+        }
+    }
+
+    // 최종 경로 업데이트
+    strncpy(ctx->request_path, file_path, sizeof(ctx->request_path) - 1);
+
     const char *ext = strrchr(ctx->request_path, '.');
     if (ext && strcasecmp(ext, ".mp4") == 0) {
-        // 쿠키 확인 로직
-        // if (!check_session(ctx)) {
-        //     send_error_response(ctx, 401); // or Redirect
-        //     return;
-        // }
+        // [세션 검증]
+        // 쿠키가 없거나 유효하지 않으면 거부
+        if (strlen(ctx->session_id) == 0 || session_get_user(ctx->session_id) < 0) {
+            printf("[Access] Denied for %s (Invalid Session)\n", ctx->client_ip);
+            send_error_response(ctx, 401); // 401 Unauthorized
+            return;
+        }
+        // 인증 성공 -> 스트리밍 진행
     }
-    */
 
-    // 5. [파일 핸들러 분배] 확장자 기반
-    const char *ext = strrchr(ctx->request_path, '.');
+    // [파일 핸들러 분배] 확장자 기반
     if (ext) {
         if (strcasecmp(ext, ".mp4") == 0) {
             // 동영상 스트리밍 (Range 지원)
