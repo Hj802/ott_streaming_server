@@ -44,12 +44,22 @@ void signal_handler(int sig) {
         return -1;
     }
 
+    if (session_system_init() != 0) {
+        fprintf(stderr, "Failed to init session system.\n");
+        thread_pool_shutdown(&pool);
+        thread_pool_wait(&pool);
+        thread_pool_cleanup(&pool);
+        db_cleanup();
+        return -1;
+    }
+
     Reactor reactor = {0};
     if (reactor_init(&reactor, &pool, &config) != 0) {
         fprintf(stderr, "Failed to init reactor.\n");
         thread_pool_shutdown(&pool);
         thread_pool_wait(&pool);
         thread_pool_cleanup(&pool);
+        session_system_cleanup();
         db_cleanup();
         return 1;
     }
@@ -67,7 +77,7 @@ void signal_handler(int sig) {
     thread_pool_cleanup(&pool);
     
     reactor_destroy(&reactor);
-    
+    session_system_cleanup();
     db_cleanup();
 
     printf("Server stopped cleanly.\n");
